@@ -1,0 +1,99 @@
+# Smithy PHP Client
+
+Schema-driven client runtime for generated and runtime-loaded Smithy services.
+Requires PHP 8.2 or later.
+
+## Installation
+
+```shell
+composer require smithy/client
+```
+
+## Client Execution
+
+Generated service clients extend `AbstractClient`. Each generated operation
+method delegates to `executeOperation()` with operation metadata and a typed
+input shape.
+
+```php
+use Smithy\Client\AbstractClient;
+
+final class WeatherClient extends AbstractClient
+{
+    public function getForecast(
+        GetForecastInput $input
+    ): GetForecastOutput {
+        return $this->executeOperation(
+            GetForecastOperation::instance(),
+            $input,
+        );
+    }
+}
+```
+
+`ClientPipeline` resolves an endpoint, serializes the request, selects an
+authentication scheme, transmits through the configured HTTP client, applies
+retry decisions, and deserializes the response. Interceptors run at the
+documented pipeline stages.
+
+## Configuration
+
+`ClientConfig` holds the runtime dependencies for one client:
+
+- protocol implementation
+- HTTP client
+- endpoint resolver
+- authentication schemes and identity resolvers
+- retry strategy
+- interceptors and plugin state
+
+Configuration objects are immutable. The `withXxx()` methods return a copy
+with one dependency replaced.
+
+## Runtime Features
+
+| Namespace | Responsibility |
+|---|---|
+| `Smithy\Client\Auth` | Authentication selection, identities, and signers |
+| `Smithy\Client\Endpoint` | Static and bytecode endpoint resolution |
+| `Smithy\Client\Interceptor` | Request pipeline hooks and contexts |
+| `Smithy\Client\Pagination` | Schema-driven paginators |
+| `Smithy\Client\Plugin` | Reusable client configuration changes |
+| `Smithy\Client\Retry` | Retry strategies and request flags |
+| `Smithy\Client\Waiter` | Modeled polling and acceptor evaluation |
+
+## Dynamic Clients
+
+`DynamicClient` loads a Smithy JSON AST at runtime and invokes operations by
+name using document-backed inputs and outputs. This example uses a model with
+the built-in `smithy.protocols#rpcv2Cbor` protocol.
+
+```php
+use Smithy\Client\Dynamic\DynamicClient;
+
+$client = DynamicClient::create(
+    model: __DIR__ . '/weather.json',
+    endpoint: 'http://localhost:8080',
+);
+
+$output = $client->call('GetForecast', [
+    'city' => 'Raleigh',
+]);
+```
+
+Provider packages register their protocols, authentication schemes, endpoint
+functions, and schema traits through `DynamicClientRuntime`.
+
+## Dependencies
+
+This package builds on `smithy/async`, `smithy/core`, `smithy/http`,
+`smithy/protocol`, and `psr/http-message`. Waiter path expressions use
+`mtdowling/jmespath.php`.
+
+## Contributing
+
+Run the component tests from the monorepo root:
+
+```shell
+vendor/bin/phpunit tests/Client
+```

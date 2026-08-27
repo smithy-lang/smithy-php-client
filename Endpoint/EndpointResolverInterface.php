@@ -1,0 +1,23 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Smithy\Client\Endpoint;
+
+/**
+ * Resolve an endpoint for an operation.
+ *
+ * Called once per attempt from inside the retry loop. Retried requests
+ * may resolve a different endpoint if context changes.
+ *
+ * Implementations:
+ *  - {@see StaticEndpointResolver} always returns the same endpoint.
+ *  - Generated ruleset resolvers evaluate Smithy BDD endpoint rules.
+ */
+interface EndpointResolverInterface
+{
+    /**
+     * Resolve the endpoint for an operation execution.
+     */
+    public function resolveEndpoint(EndpointResolverParams $params): Endpoint;
+}

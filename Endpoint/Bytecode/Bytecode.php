@@ -35,9 +35,9 @@ namespace Smithy\Client\Endpoint\Bytecode;
  *                    `[3i, 3i+1, 3i+2]`.
  *
  *  - `$bddRoot`      Signed root reference into `$bddNodes`. Positive =
- *                    node index + 1. negative = complemented node index.
- *                    +1/-1 = true/false terminals. >= RESULT_OFFSET = a
- *                    result-index reference.
+ *                    node index + 1. Negative values are complemented
+ *                    node indexes. +1/-1 are true/false terminals.
+ *                    Values >= RESULT_OFFSET are result-index references.
  *
  *  - `$conditionOffsets`
  *                    `list<int>` - one entry per BDD condition. Value is
@@ -54,8 +54,8 @@ namespace Smithy\Client\Endpoint\Bytecode;
  *                    Two parallel `list<int>` of length equal to the
  *                    number of conditions. Together they identify BDD
  *                    fast-path conditions: type is one of the `COND_*`
- *                    constants. operand meaning depends on type
- *                    (register index or packed reg+const).
+ *                    constants. Operand meaning depends on type
+ *                    (register index or packed register + constant).
  *
  * The class is deliberately just data. All hot-path work happens in
  * {@see Evaluator}, which reads these arrays directly.
@@ -108,7 +108,8 @@ final class Bytecode
         public readonly array $resultOffsets,
         public readonly array $conditionTypes,
         public readonly array $conditionOperands
-    ) {
+    )
+    {
         $defaults = [];
         foreach ($registers as $i => $def) {
             $defaults[$i] = $def['default'];

@@ -11,8 +11,7 @@ namespace Smithy\Client\Endpoint\Bytecode;
  * {@see Evaluator}. Numeric values match smithy-java's rules-engine so that
  * bytecode blobs are portable across languages if we ever need to swap them.
  *
- * The class is never instantiated. All members are class-level constants
- * to give the PHP tracing JIT a hint that they can be inlined.
+ * The class is never instantiated. All members are class-level constants.
  */
 final class Opcodes
 {
@@ -93,7 +92,7 @@ final class Opcodes
     /** Call function with three arguments. */
     public const FN3 = 22;
 
-    /** Call function with N arguments (function-defined arity). */
+    /** Call function with N arguments. Operands: function index, arity. */
     public const FN = 23;
 
     /** Get named property from top-of-stack. Operand: 2-byte prop-name const index. */
@@ -162,7 +161,7 @@ final class Opcodes
     /** Negative-index accessor for register. */
     public const GET_NEGATIVE_INDEX_REG = 44;
 
-    /** Pop top. if not TRUE, jump forward. Operand: 2-byte forward offset. */
+    /** Pop top; if not TRUE, jump forward. Operand: 2-byte forward offset. */
     public const JMP_IF_FALSE = 45;
 
     /** Unconditional forward jump. Operand: 2-byte offset. */
@@ -223,7 +222,8 @@ final class Opcodes
      * tag:
      *   - 0: literal string. Payload is the string.
      *   - 1: register ref. Payload is the int register index.
-     *   - 2: register-property ref. Payload is `[reg-idx, prop-const-idx]`.
+     *   - 2: register-property ref. Payload is
+     *        `[reg-idx, list<prop-const-idx>]`.
      */
     public const BUILD_TEMPLATE = 55;
 

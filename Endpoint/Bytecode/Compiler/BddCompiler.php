@@ -16,7 +16,7 @@ use Smithy\Client\Endpoint\Bytecode\RulesFunctionInterface;
  *   - `$trait`     Raw trait dict as parsed from `model.json`. Expected
  *                  keys: `parameters`, `conditions`, `results`, `root`,
  *                  `nodeCount`, `nodes` (base64), optional `version`.
- *   - `$functions` `array<string, RulesFunctionInterface>` - merged registry of
+ *   - `$functions` `array<string, RulesFunctionInterface>` merged registry of
  *                  standard and provider-defined rules functions.
  *
  * Output: a {@see Bytecode} instance suitable for the endpoint evaluator.
@@ -65,20 +65,30 @@ final class BddCompiler
     /**
      * @param array<string, RulesFunctionInterface> $functions
      * @param array<string, int>                    $extendedOpcodes Optional
-     *                      fn-name -> opcode-byte map for vendor fusions. When a compiled
-     *                      `{"fn": name, ...}` matches a key, the compiler emits `[..., $op]`
-     *                      instead of the generic `FN1`/`FN2`/`FN3` sequence. Consumed by
-     *                      runtime through a matching opcode handler. The
-     *                      codegen layer is responsible for wiring that
-     *                      handler to the evaluator.
+     *                      function-name to opcode-byte map for vendor
+     *                      fusions. When a compiled `{"fn": name, ...}`
+     *                      matches a key, the compiler emits `[..., $op]`
+     *                      instead of the generic `FN1`/`FN2`/`FN3`
+     *                      sequence. Consumed by runtime through
+     *                      {@see \Smithy\Client\Endpoint\Bytecode\OpcodeHandlerInterface}.
+     *                      the codegen layer is responsible for wiring a
+     *                      matching handler to the evaluator.
      * @param bool $assumeAsciiEndpointStrings Whether string-typed endpoint
-     *                    parameters may skip runtime non-ASCII detection.
+     *                      parameters may skip runtime non-ASCII detection.
      */
     public function __construct(
         array $functions,
         private readonly array $extendedOpcodes = [],
         private readonly bool $assumeAsciiEndpointStrings = false
-    ) {
+    )
+    {
+        foreach ($extendedOpcodes as $name => $opcode) {
+            if ($opcode < 56 || $opcode > 255) {
+                throw new \InvalidArgumentException(
+                    "Extended opcode for {$name} must be between 56 and 255"
+                );
+            }
+        }
         $this->functions = $functions;
     }
 
@@ -98,8 +108,7 @@ final class BddCompiler
         $conditions = $trait['conditions'] ?? [];
         $results = $trait['results'] ?? [];
 
-        // 1. Allocate a register for each parameter, preserving definition
-        // order.
+        // 1. Allocate a register for each parameter, preserving definition order.
         //    The evaluator uses the register index to look up defaults and
         //    to accept input by name via `inputRegisterMap`.
         $inputRegisterMap = [];
@@ -109,7 +118,7 @@ final class BddCompiler
                 'builtIn' => $def['builtIn'] ?? null,
                 'default' => $def['default'] ?? null,
                 'required' => (bool) ($def['required'] ?? false),
-                'type' => \strtolower((string) ($def['type'] ?? 'string'))
+                'type' => \strtolower((string) ($def['type'] ?? 'string')),
             ]);
             $inputRegisterMap[$name] = $idx;
         }
@@ -127,7 +136,8 @@ final class BddCompiler
             $conditionTypes[] = $type;
             $conditionOperands[] = $operand;
             if ($prog === null) {
-                $conditionOffsets[] = 0; // never dispatched
+                // Fast-path conditions are never dispatched through code.
+                $conditionOffsets[] = 0;
             } else {
                 $conditionOffsets[] = \count($code);
                 foreach ($prog as $b) {
@@ -181,23 +191,19 @@ final class BddCompiler
         $expected = $nodeCount * 12;
         if (\strlen($bytes) !== $expected) {
             throw new \InvalidArgumentException(
-                "BDD node blob size {$expected} bytes expected, got "
-                    . \strlen($bytes)
+                "BDD node blob size {$expected} bytes expected, got " . \strlen($bytes)
             );
         }
         // Unpack as big-endian signed 32-bit ints, one per 4 bytes.
         $ints = \unpack('N*', $bytes);
         if ($ints === false) {
-            throw new \InvalidArgumentException(
-                'Failed to unpack BDD node blob'
-            );
+            throw new \InvalidArgumentException('Failed to unpack BDD node blob');
         }
-        // \unpack('N*') gives 1-indexed unsigned. Convert to signed and
-        // reindex.
+        // \unpack('N*') gives 1-indexed unsigned values. Convert to signed
+        // and reindex.
         $out = [];
         foreach ($ints as $u) {
-            // On 64-bit PHP, 'N' returns 0..2^32-1. Interpret >= 2^31 as
-            // negative.
+            // On 64-bit PHP, 'N' returns 0..2^32-1. Interpret >= 2^31 as negative.
             $out[] = $u >= 0x80000000 ? $u - 0x100000000 : $u;
         }
         return $out;
@@ -219,7 +225,7 @@ final class BddCompiler
 
     private function internConst(mixed $value): int
     {
-        // Stable string key: scalar + type. Arrays and other types serialized.
+        // Stable string key: scalar + type. Arrays and other types serialize.
         // `gettype` returns a small closed set of strings, so match on it
         // to get a single dispatch instead of a chain of `is_*` calls.
         $key = match (\gettype($value)) {
@@ -227,7 +233,7 @@ final class BddCompiler
             'integer' => 'i:' . $value,
             'boolean' => 'b:' . ($value ? '1' : '0'),
             'NULL'    => 'n:',
-            default   => 'x:' . \serialize($value)
+            default   => 'x:' . \serialize($value),
         };
         if (isset($this->constantIndex[$key])) {
             return $this->constantIndex[$key];
@@ -244,14 +250,38 @@ final class BddCompiler
             return $this->functionIndex[$name];
         }
         if (!isset($this->functions[$name])) {
-            throw new \RuntimeException(
-                "Unknown endpoint rules function: {$name}"
-            );
+            throw new \RuntimeException("Unknown endpoint rules function: {$name}");
         }
         $idx = \count($this->functionList);
         $this->functionList[] = $this->functions[$name];
         $this->functionIndex[$name] = $idx;
         return $idx;
+    }
+
+    /**
+     * @param list<mixed> $argv
+     */
+    private function validateFunctionArity(string $fn, array $argv): void
+    {
+        $function = $this->functions[$fn] ?? null;
+        if ($function === null) {
+            return;
+        }
+
+        $arity = \count($argv);
+        $expectedArity = $function->getArgumentCount();
+        if ($fn === 'coalesce' && $arity < 2) {
+            throw new \RuntimeException(
+                "Endpoint rules function {$fn} expects at least 2 "
+                    . "arguments, got {$arity}"
+            );
+        }
+        if ($expectedArity !== -1 && $arity !== $expectedArity) {
+            throw new \RuntimeException(
+                "Endpoint rules function {$fn} expects {$expectedArity} "
+                    . "arguments, got {$arity}"
+            );
+        }
     }
 
     /**
@@ -264,6 +294,7 @@ final class BddCompiler
         $fn = (string) ($cond['fn'] ?? '');
         $argv = $cond['argv'] ?? [];
         $assign = $cond['assign'] ?? null;
+        $this->validateFunctionArity($fn, $argv);
 
         // Fast path: condition without assignment matching one of the
         // recognized shapes. Conditions carrying an `assign` always need
@@ -281,35 +312,27 @@ final class BddCompiler
                     break;
                 case 'booleanEquals':
                     // booleanEquals({ref: X}, true|false)
-                    if (isset($argv[0]['ref'])
-                        && \count($argv) === 2
-                        && \is_bool($argv[1])
-                    ) {
+                    if (isset($argv[0]['ref']) && \count($argv) === 2 && \is_bool($argv[1])) {
                         $reg = $this->registerIndex[$argv[0]['ref']] ?? null;
                         if ($reg !== null) {
                             return [
-                                $argv[1]
-                                    ? Opcodes::COND_IS_TRUE
-                                    : Opcodes::COND_IS_FALSE,
+                                $argv[1] ? Opcodes::COND_IS_TRUE : Opcodes::COND_IS_FALSE,
                                 $reg,
-                                null
+                                null,
                             ];
                         }
                     }
                     break;
                 case 'stringEquals':
                     // stringEquals({ref: X}, "literal")
-                    if (isset($argv[0]['ref'])
-                        && \count($argv) === 2
-                        && \is_string($argv[1])
-                    ) {
+                    if (isset($argv[0]['ref']) && \count($argv) === 2 && \is_string($argv[1])) {
                         $reg = $this->registerIndex[$argv[0]['ref']] ?? null;
                         if ($reg !== null) {
                             $constIdx = $this->internConst($argv[1]);
                             return [
                                 Opcodes::COND_STRING_EQ_REG_CONST,
                                 ($constIdx << 8) | $reg,
-                                null
+                                null,
                             ];
                         }
                     }
@@ -325,7 +348,7 @@ final class BddCompiler
                 'builtIn' => null,
                 'default' => null,
                 'required' => false,
-                'type' => 'any'
+                'type' => 'any',
             ]);
             $prog[] = Opcodes::SET_REG_RETURN;
             $prog[] = $reg;
@@ -453,7 +476,9 @@ final class BddCompiler
             }
             return $this->emitProperties($v);
         }
-        return [Opcodes::LOAD_CONST, $this->internConst($v)];
+        return \is_string($v)
+            ? $this->compileTemplate($v)
+            : $this->emitLoadConst($v);
     }
 
     private static function isListArray(array $a): bool
@@ -472,9 +497,7 @@ final class BddCompiler
         if (\is_array($expr) && isset($expr['ref'])) {
             $reg = $this->registerIndex[$expr['ref']] ?? null;
             if ($reg === null) {
-                throw new \RuntimeException(
-                    "Unknown parameter reference: {$expr['ref']}"
-                );
+                throw new \RuntimeException("Unknown parameter reference: {$expr['ref']}");
             }
             return [Opcodes::LOAD_REGISTER, $reg];
         }
@@ -482,60 +505,123 @@ final class BddCompiler
             return $this->emitExpression($expr);
         }
         if (!\is_string($expr)) {
-            return [Opcodes::LOAD_CONST, $this->internConst($expr)];
+            return $this->emitLoadConst($expr);
         }
 
         // Split into literal / reference segments.
         $segments = self::splitTemplate($expr);
         if (count($segments) === 1 && $segments[0][0] === 'lit') {
-            return [Opcodes::LOAD_CONST, $this->internConst($segments[0][1])];
+            return $this->emitLoadConst($segments[0][1]);
         }
 
-        // Multi-segment template: build a metadata record (list of
-        // tagged segments) and emit a single BUILD_TEMPLATE opcode.
-        // Cuts a 6-8 opcode sequence (LOAD_CONST/LOAD_REGISTER/
-        // GET_PROPERTY_REG interleaved, terminated by RESOLVE_TEMPLATE)
-        // to a single dispatch that walks the metadata inline.
+        if (count($segments) === 1 && $segments[0][0] === 'ref') {
+            return $this->emitTemplateRef($segments[0][1]);
+        }
+
+        // Plain register/literal templates benchmark better as one fused
+        // metadata walk. Property references benchmark better after they
+        // are materialized onto the stack, then joined with RESOLVE_TEMPLATE.
+        foreach ($segments as $seg) {
+            if ($seg[0] === 'ref' && \str_contains($seg[1], '#')) {
+                return $this->emitResolveTemplate($segments);
+            }
+        }
+
         $meta = [];
         foreach ($segments as $seg) {
             if ($seg[0] === 'lit') {
                 // Tag 0 = literal string.
                 $meta[] = [0, $seg[1]];
             } else {
-                // "Hostname" or "Metadata#suffix"
+                // Tag 1 = plain register ref.
                 $path = $seg[1];
-                $hash = strpos($path, '#');
-                if ($hash === false) {
-                    $reg = $this->registerIndex[$path] ?? null;
-                    if ($reg === null) {
-                        throw new \RuntimeException(
-                            "Unknown template reference: {$path}"
-                        );
-                    }
-                    // Tag 1 = plain register ref.
-                    $meta[] = [1, $reg];
-                } else {
-                    $regName = substr($path, 0, $hash);
-                    $prop = substr($path, $hash + 1);
-                    $reg = $this->registerIndex[$regName] ?? null;
-                    if ($reg === null) {
-                        throw new \RuntimeException(
-                            "Unknown template reference: {$regName}"
-                        );
-                    }
-                    $propIdx = $this->internConst($prop);
-                    // Tag 2 = register-property ref, payload
-                    // [reg-idx, prop-const-idx].
-                    $meta[] = [2, [$reg, $propIdx]];
+                $reg = $this->registerIndex[$path] ?? null;
+                if ($reg === null) {
+                    throw new \RuntimeException("Unknown template reference: {$path}");
                 }
+                $meta[] = [1, $reg];
             }
         }
         $metaIdx = $this->internConst($meta);
         return [
             Opcodes::BUILD_TEMPLATE,
             ($metaIdx >> 8) & 0xFF,
-            $metaIdx & 0xFF
+            $metaIdx & 0xFF,
         ];
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function emitLoadConst(mixed $value): array
+    {
+        $idx = $this->internConst($value);
+        if ($idx <= 0xFF) {
+            return [Opcodes::LOAD_CONST, $idx];
+        }
+
+        return [
+            Opcodes::LOAD_CONST_W,
+            ($idx >> 8) & 0xFF,
+            $idx & 0xFF,
+        ];
+    }
+
+    /**
+     * @param list<array{0:string,1:string}> $segments
+     *
+     * @return list<int>
+     */
+    private function emitResolveTemplate(array $segments): array
+    {
+        $prog = [];
+        foreach ($segments as $seg) {
+            $segmentProg = $seg[0] === 'lit'
+                ? $this->emitLoadConst($seg[1])
+                : $this->emitTemplateRef($seg[1]);
+            foreach ($segmentProg as $b) {
+                $prog[] = $b;
+            }
+        }
+        $prog[] = Opcodes::RESOLVE_TEMPLATE;
+        $prog[] = \count($segments);
+        return $prog;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function emitTemplateRef(string $path): array
+    {
+        $hash = \strpos($path, '#');
+        if ($hash === false) {
+            $reg = $this->registerIndex[$path] ?? null;
+            if ($reg === null) {
+                throw new \RuntimeException("Unknown template reference: {$path}");
+            }
+            return [Opcodes::LOAD_REGISTER, $reg];
+        }
+
+        $regName = \substr($path, 0, $hash);
+        $reg = $this->registerIndex[$regName] ?? null;
+        if ($reg === null) {
+            throw new \RuntimeException("Unknown template reference: {$regName}");
+        }
+
+        $prog = [];
+        foreach (\explode('#', \substr($path, $hash + 1)) as $i => $part) {
+            $idx = $this->internConst($part);
+            if ($i === 0) {
+                $prog[] = Opcodes::GET_PROPERTY_REG;
+                $prog[] = $reg;
+            } else {
+                $prog[] = Opcodes::GET_PROPERTY;
+            }
+            $prog[] = ($idx >> 8) & 0xFF;
+            $prog[] = $idx & 0xFF;
+        }
+
+        return $prog;
     }
 
     /**
@@ -571,9 +657,7 @@ final class BddCompiler
                     }
                     $close = \strpos($s, '}', $i + 1);
                     if ($close === false) {
-                        throw new \RuntimeException(
-                            "Unterminated template ref in: {$s}"
-                        );
+                        throw new \RuntimeException("Unterminated template ref in: {$s}");
                     }
                     $segments[] = ['ref', \substr($s, $i + 1, $close - $i - 1)];
                     $i = $close + 1;
@@ -614,9 +698,7 @@ final class BddCompiler
             case 'substring':
                 // substring(input, start, stop, reverse) with all three
                 // trailing args as literal int/bool. Emits the dedicated
-                // SUBSTRING opcode instead of the general FN dispatch,
-                // cutting ~4% of profile samples spent in anon-class
-                // `apply` + `getArgumentCount`.
+                // SUBSTRING opcode instead of the general FN dispatch.
                 //
                 // Flags byte layout matches Evaluator case 34:
                 //   bit 0 = reverse-from-end
@@ -670,8 +752,7 @@ final class BddCompiler
 
             case 'parseURL':
                 // fn:parseURL(x) - 1 arg. Emits the fused PARSE_URL arm
-                // (opcode 36). Same free-win as URI_ENCODE /
-                // IS_VALID_HOST_LABEL.
+                // (opcode 36). Same free-win as URI_ENCODE / IS_VALID_HOST_LABEL.
                 if (\count($argv) === 1) {
                     $prog = $this->compileTemplate($argv[0]);
                     $prog[] = Opcodes::PARSE_URL;
@@ -718,7 +799,7 @@ final class BddCompiler
                                 Opcodes::GET_PROPERTY_REG,
                                 $reg,
                                 ($idx >> 8) & 0xFF,
-                                $idx & 0xFF
+                                $idx & 0xFF,
                             ];
                         } elseif ($first[1] < 0) {
                             // Negative index like `[-2]` - GET_INDEX_REG
@@ -728,13 +809,13 @@ final class BddCompiler
                             $prog = [
                                 Opcodes::GET_NEGATIVE_INDEX_REG,
                                 $reg,
-                                -$first[1]
+                                -$first[1],
                             ];
                         } else {
                             $prog = [
                                 Opcodes::GET_INDEX_REG,
                                 $reg,
-                                $first[1]
+                                $first[1],
                             ];
                         }
                     }
@@ -768,15 +849,22 @@ final class BddCompiler
         }
         $arity = \count($argv);
         $fnIdx = $this->functionIndex($fn);
-        $op = match ($arity) {
-            0 => Opcodes::FN0,
-            1 => Opcodes::FN1,
-            2 => Opcodes::FN2,
-            3 => Opcodes::FN3,
-            default => Opcodes::FN
-        };
+        $this->validateFunctionArity($fn, $argv);
+        $expectedArity = $this->functions[$fn]->getArgumentCount();
+        $op = $expectedArity === -1
+            ? Opcodes::FN
+            : match ($arity) {
+                0 => Opcodes::FN0,
+                1 => Opcodes::FN1,
+                2 => Opcodes::FN2,
+                3 => Opcodes::FN3,
+                default => Opcodes::FN,
+            };
         $prog[] = $op;
         $prog[] = $fnIdx;
+        if ($op === Opcodes::FN) {
+            $prog[] = $arity;
+        }
         return $prog;
     }
 
@@ -787,6 +875,10 @@ final class BddCompiler
      */
     private static function parsePropertyPath(string $path): array
     {
+        if ($path === '' || $path[0] === '.' || \str_ends_with($path, '.')) {
+            throw new \RuntimeException("Malformed property path: {$path}");
+        }
+
         $out = [];
         $token = '';
         $i = 0;
@@ -795,10 +887,24 @@ final class BddCompiler
             $ch = $path[$i];
             switch ($ch) {
                 case '.':
-                    if ($token !== '') {
-                        $out[] = ['prop', $token];
-                        $token = '';
+                    $next = $i + 1 < $n ? $path[$i + 1] : '';
+                    if ($token === '') {
+                        $previous = $i > 0 ? $path[$i - 1] : '';
+                        if ($previous !== ']' || $next === '[') {
+                            throw new \RuntimeException(
+                                "Malformed property path: {$path}"
+                            );
+                        }
+                        $i++;
+                        break;
                     }
+                    if ($next === '[') {
+                        throw new \RuntimeException(
+                            "Malformed property path: {$path}"
+                        );
+                    }
+                    $out[] = ['prop', $token];
+                    $token = '';
                     $i++;
                     break;
                 case '[':
@@ -808,14 +914,18 @@ final class BddCompiler
                     }
                     $close = \strpos($path, ']', $i);
                     if ($close === false) {
+                        throw new \RuntimeException("Malformed index in path: {$path}");
+                    }
+                    $index = \substr($path, $i + 1, $close - $i - 1);
+                    if (
+                        $index === ''
+                        || !\preg_match('/^-?\d+$/', $index)
+                    ) {
                         throw new \RuntimeException(
                             "Malformed index in path: {$path}"
                         );
                     }
-                    $out[] = [
-                        'idx',
-                        (int) \substr($path, $i + 1, $close - $i - 1)
-                    ];
+                    $out[] = ['idx', (int) $index];
                     $i = $close + 1;
                     break;
                 default:
@@ -869,12 +979,9 @@ final class BddCompiler
             return match ($fn) {
                 // substring / getAttr / uriEncode preserve ASCII-in ->
                 // ASCII-out.
-                'substring',
-                'uriEncode' => isset($argv[0])
-                    && $this->isAsciiSafeExpr($argv[0]),
-                'getAttr' => isset($argv[0])
-                    && $this->isAsciiSafeExpr($argv[0]),
-                default => false
+                'substring', 'uriEncode' => isset($argv[0]) && $this->isAsciiSafeExpr($argv[0]),
+                'getAttr' => isset($argv[0]) && $this->isAsciiSafeExpr($argv[0]),
+                default => false,
             };
         }
 

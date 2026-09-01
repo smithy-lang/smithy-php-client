@@ -392,8 +392,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
                 $member->getDirectTraitById(self::CONTEXT_PARAM_TRAIT)
             );
             $name = \is_array($trait) ? ($trait['name'] ?? null) : null;
-            if (
-                \is_string($name)
+            if (\is_string($name)
                 && isset($this->inputRegisterMap[$name])
             ) {
                 $members[] = [$member, $name];
@@ -412,8 +411,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
                 $path = \is_array($definition)
                     ? ($definition['path'] ?? null)
                     : null;
-                if (
-                    \is_string($name)
+                if (\is_string($name)
                     && \is_string($path)
                     && isset($this->inputRegisterMap[$name])
                 ) {
@@ -430,8 +428,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
         );
         if (\is_array($staticTrait)) {
             foreach ($staticTrait as $name => $definition) {
-                if (
-                    \is_string($name)
+                if (\is_string($name)
                     && \is_array($definition)
                     && \array_key_exists('value', $definition)
                     && isset($this->inputRegisterMap[$name])
@@ -465,8 +462,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
         $inputs = [];
         foreach ($context[0] as [$member, $name]) {
             $value = $input->getMemberValue($member);
-            if (
-                $member->isRequired()
+            if ($member->isRequired()
                 && (
                     $value === null
                     || $value === []

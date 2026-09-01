@@ -917,8 +917,7 @@ final class BddCompiler
                         throw new \RuntimeException("Malformed index in path: {$path}");
                     }
                     $index = \substr($path, $i + 1, $close - $i - 1);
-                    if (
-                        $index === ''
+                    if ($index === ''
                         || !\preg_match('/^-?\d+$/', $index)
                     ) {
                         throw new \RuntimeException(

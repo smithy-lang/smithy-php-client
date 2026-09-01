@@ -357,8 +357,7 @@ final class StdFunctions
                                 return null;
                             }
                             $index = \substr($path, $i + 1, $close - $i - 1);
-                            if (
-                                $index === ''
+                            if ($index === ''
                                 || !\preg_match('/^-?\d+$/', $index)
                             ) {
                                 return null;
@@ -628,8 +627,7 @@ final class StdFunctions
                 }
 
                 foreach (\explode('.', $host) as $part) {
-                    if (
-                        $part === ''
+                    if ($part === ''
                         || !\preg_match(
                             '/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/',
                             $part

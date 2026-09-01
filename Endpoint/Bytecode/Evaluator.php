@@ -128,9 +128,6 @@ final class Evaluator
             );
         }
 
-        // Result references are zero-based. Trait `results[0]` is
-        // `RESULT_OFFSET`. The implicit `NoMatchRule` is represented by
-        // terminal refs and is not serialized in the result list.
         $resultIdx = $ref - Bytecode::RESULT_OFFSET;
         if ($resultIdx < 0 || !isset($bytecode->resultOffsets[$resultIdx])) {
             throw new RulesEvaluationException(
@@ -139,6 +136,11 @@ final class Evaluator
         }
         $result = $this->runBytecode($bytecode->resultOffsets[$resultIdx], $regs);
 
+        if ($result === null) {
+            throw new RulesEvaluationException(
+                'No endpoint matched the supplied parameters'
+            );
+        }
         if (!$result instanceof Endpoint) {
             throw new RulesEvaluationException(
                 'Endpoint result program did not return an Endpoint'

@@ -37,7 +37,8 @@ namespace Smithy\Client\Endpoint\Bytecode;
  *  - `$bddRoot`      Signed root reference into `$bddNodes`. Positive =
  *                    node index + 1. Negative values are complemented
  *                    node indexes. +1/-1 are true/false terminals.
- *                    Values >= RESULT_OFFSET are result-index references.
+ *                    Values >= RESULT_OFFSET are BDD result references.
+ *                    Result index zero is the implicit `NoMatchRule`.
  *
  *  - `$conditionOffsets`
  *                    `list<int>` - one entry per BDD condition. Value is
@@ -45,10 +46,11 @@ namespace Smithy\Client\Endpoint\Bytecode;
  *                    (full-dispatch) program begins.
  *
  *  - `$resultOffsets`
- *                    `list<int>` - one entry per BDD result. Value is the
+ *                    `list<int>` - one entry per BDD result, including the
+ *                    implicit `NoMatchRule` in slot zero. Each value is the
  *                    `$code` offset at which the result's program begins.
- *                    Result programs terminate with `RETURN_ENDPOINT` or
- *                    `RETURN_ERROR`.
+ *                    Result programs terminate with `RETURN_VALUE`,
+ *                    `RETURN_ENDPOINT`, or `RETURN_ERROR`.
  *
  *  - `$conditionTypes` / `$conditionOperands`
  *                    Two parallel `list<int>` of length equal to the
@@ -63,8 +65,8 @@ namespace Smithy\Client\Endpoint\Bytecode;
 final class Bytecode
 {
     /**
-     * BDD result-reference offset. Refs `>= RESULT_OFFSET` decode as
-     * result indices `ref - RESULT_OFFSET`. Matches smithy-java.
+     * BDD result-reference offset. Raw result index zero is the implicit
+     * `NoMatchRule`; serialized trait results begin at index one.
      */
     public const RESULT_OFFSET = 100_000_000;
 

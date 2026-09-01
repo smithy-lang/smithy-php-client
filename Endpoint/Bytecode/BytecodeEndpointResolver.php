@@ -269,6 +269,17 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
 
         $inputs = $this->staticContext;
 
+        if ($operationContext !== false) {
+            foreach (
+                $this->collectOperationContext(
+                    $operationContext,
+                    $params->input
+                ) as $name => $value
+            ) {
+                $inputs[$name] = $value;
+            }
+        }
+
         $context = $params->config->context[
             EndpointResolverParams::CONTEXT_PARAMETERS
         ] ?? [];
@@ -279,17 +290,6 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
         }
         foreach ($context as $name => $value) {
             if (\is_string($name)) {
-                $inputs[$name] = $value;
-            }
-        }
-
-        if ($operationContext !== false) {
-            foreach (
-                $this->collectOperationContext(
-                    $operationContext,
-                    $params->input
-                ) as $name => $value
-            ) {
                 $inputs[$name] = $value;
             }
         }

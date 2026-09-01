@@ -28,8 +28,9 @@ use Smithy\Client\Endpoint\Bytecode\RulesFunctionInterface;
  *      shape (recorded in `$conditionTypes` / `$conditionOperands`) or a
  *      full-dispatch program appended to `$code` with an entry recorded
  *      in `$conditionOffsets`.
- *   3. Walk results the same way. Every result becomes a program in
- *      `$code` terminating in `RETURN_ENDPOINT` or `RETURN_ERROR`.
+ *   3. Emit the implicit `NoMatchRule` into result slot zero, then walk
+ *      the serialized results. Every result becomes a program in `$code`
+ *      terminating in `RETURN_VALUE`, `RETURN_ENDPOINT`, or `RETURN_ERROR`.
  *   4. Decode the base64 `nodes` blob into a flat `int[]` triples list
  *      matching smithy-java's big-endian 12-byte-per-node layout.
  *
@@ -146,9 +147,13 @@ final class BddCompiler
             }
         }
 
-        // 3. Compile results. Each result appends a program that ends in
-        //    RETURN_ENDPOINT or RETURN_ERROR.
-        $resultOffsets = [];
+        // 3. Compile results. Slot zero is the implicit NoMatchRule from
+        //    the BDD result index space; it is not serialized in the trait.
+        $resultOffsets = [\count($code)];
+        $code[] = Opcodes::LOAD_CONST;
+        $code[] = $this->internConst(null);
+        $code[] = Opcodes::RETURN_VALUE;
+
         foreach ($results as $res) {
             $resultOffsets[] = \count($code);
             $prog = $this->compileResult($res);

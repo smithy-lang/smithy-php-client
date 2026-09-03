@@ -1,0 +1,696 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Smithy\Client;
+
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
+use Smithy\Async\Async;
+use Smithy\Client\Auth\ResolvedAuthScheme;
+use Smithy\Client\Endpoint\Endpoint;
+use Smithy\Client\Endpoint\EndpointResolverParams;
+use Smithy\Client\Interceptor\InputContext;
+use Smithy\Client\Interceptor\InterceptorInterface;
+use Smithy\Client\Interceptor\OutputContext;
+use Smithy\Client\Interceptor\RequestContext;
+use Smithy\Client\Interceptor\ResponseContext;
+use Smithy\Client\Retry\RetryRequestFlagResolverInterface;
+use Smithy\Client\Retry\TokenAcquisitionFailedException;
+use Smithy\Core\Serde\SerializableStructInterface;
+use Smithy\Core\Shape\OperationInterface;
+use Smithy\Http\Client\Exception\HttpException;
+use Smithy\Http\Client\HttpRequestOptions;
+use Smithy\Http\Message\{
+    Request as SmithyRequest,
+    RequestStreamInterface
+};
+
+/**
+ * Run operations through serialization, retries, transport, and
+ * deserialization.
+ *
+ * Invoke registered interceptors at each execution stage.
+ *
+ * An {@see AbstractClient} constructs one pipeline and reuses it across
+ * operations.
+ *
+ * Hook error semantics (matching smithy-java's `ClientInterceptor`
+ * documentation):
+ *
+ *  - Batch read hooks invoke every interceptor even if one throws. The most
+ *    recent error replaces earlier errors.
+ *  - All other read hooks fail fast: the first thrown exception aborts
+ *    the batch and jumps to the enclosing completion hook.
+ *  - Pre-attempt modify hooks (`modifyBeforeSerialization`,
+ *    `modifyBeforeRetryLoop`, `modifyBeforeSigning`, `modifyBeforeTransmit`,
+ *    `modifyBeforeDeserialization`) fail fast.
+ *  - Completion modify hooks (`modifyBeforeAttemptCompletion`,
+ *    `modifyBeforeCompletion`) pass the current error to each interceptor.
+ *    A thrown exception stops the chain.
+ *
+ * Retry semantics: on an attempt-level failure the pipeline calls
+ * `modifyBeforeAttemptCompletion` then `readAfterAttempt`, hands the
+ * error to the {@see \Smithy\Client\Retry\RetryStrategyInterface}, waits
+ * for the requested delay, and either retries or completes the execution.
+ */
+final class ClientPipeline
+{
+    public function __construct(
+        private readonly ClientConfig $config
+    ) {}
+
+    /**
+     * Run the operation and return its output.
+     */
+    public function execute(
+        OperationInterface $operation,
+        SerializableStructInterface $input,
+        ?RequestOverrideConfig $overrides = null
+    ): SerializableStructInterface
+    {
+        $config = $this->config;
+        $interceptor = $config->interceptorChain;
+
+        if ($interceptor->isEmpty()) {
+            $defaultHttpOptions = $config
+                ->httpClient
+                ->getDefaultRequestOptions();
+            $httpOptions = $overrides?->resolveHttpOptions(
+                $defaultHttpOptions
+            );
+            $effectiveHttpOptions = $httpOptions ?? $defaultHttpOptions;
+
+            return $this->executeWithoutInterceptors(
+                $operation,
+                $input,
+                $config,
+                $overrides,
+                $httpOptions,
+                $effectiveHttpOptions
+            );
+        }
+
+        $error = null;
+        $reqCtx = null;
+        $respCtx = null;
+        $outCtx = null;
+
+        try {
+            $inputCtx = new InputContext($operation, $input, $config);
+            $interceptor->readBeforeExecution($inputCtx);
+
+            $defaultHttpOptions = $config
+                ->httpClient
+                ->getDefaultRequestOptions();
+            $httpOptions = $overrides?->resolveHttpOptions(
+                $defaultHttpOptions
+            );
+            $effectiveHttpOptions = $httpOptions ?? $defaultHttpOptions;
+
+            $input = $interceptor->modifyBeforeSerialization($inputCtx);
+            if ($input !== $inputCtx->input) {
+                $inputCtx->replaceInput($input);
+            }
+            $interceptor->readBeforeSerialization($inputCtx);
+
+            $endpoint = $this->resolveEndpoint($operation, $input, $config);
+            $request = $this->serialize($operation, $input, $endpoint);
+            $request = $this->applyEndpointHeaders($request, $endpoint);
+            $request = $this->applyOverrideHeaders($request, $overrides);
+
+            $reqCtx = new RequestContext(
+                $operation,
+                $input,
+                $config,
+                $request
+            );
+
+            $interceptor->readAfterSerialization($reqCtx);
+
+            $request = $interceptor->modifyBeforeRetryLoop($reqCtx);
+            if ($request !== $reqCtx->request) {
+                $reqCtx->replaceRequest($request);
+            }
+            $retryRequest = $reqCtx->request;
+
+            $resolvedAuthScheme = $config
+                ->authSchemeResolver
+                ->resolveAuthScheme(
+                    $operation,
+                    $endpoint,
+                    $config,
+                    $overrides?->authSchemePreference
+                        ?? $config->authSchemePreference
+                );
+
+            $requestFlags = self::resolveRetryRequestFlags(
+                $operation,
+                $config
+            );
+            $retryState = $config->retryStrategy->begin(
+                $config->retryScope,
+                $requestFlags
+            );
+
+            $attempt = 1;
+            while (true) {
+                $reqCtx->replaceRequest($retryRequest);
+                [$respCtx, $outCtx, $error] = $this->executeAttempt(
+                    $interceptor,
+                    $reqCtx,
+                    $resolvedAuthScheme,
+                    $httpOptions
+                );
+
+                $error = $this->completeAttempt(
+                    $interceptor,
+                    $outCtx,
+                    $error
+                );
+
+                if ($error !== null) {
+                    if ($overrides?->maxAttempts !== null
+                        && $attempt >= $overrides->maxAttempts
+                    ) {
+                        break;
+                    }
+
+                    try {
+                        $delay = $config->retryStrategy->refresh(
+                            $retryState,
+                            $error
+                        );
+                    } catch (TokenAcquisitionFailedException $e) {
+                        Async::delay($e->delay);
+                        break;
+                    }
+
+                    if (!self::prepareRequestForRetry(
+                        $outCtx->request ?? $retryRequest,
+                        $outCtx->response,
+                        $effectiveHttpOptions,
+                        $error
+                    )) {
+                        break;
+                    }
+
+                    Async::delay($delay);
+                    ++$attempt;
+
+                    continue;
+                }
+
+                $config->retryStrategy->recordSuccess($retryState);
+                break;
+            }
+        } catch (\Throwable $e) {
+            $error = $e;
+        }
+
+        $outCtx ??= new OutputContext(
+            $operation,
+            $input,
+            $config,
+            $reqCtx?->request,
+            $respCtx?->response,
+            null
+        );
+
+        return $this->completeExecution($interceptor, $outCtx, $error);
+    }
+
+    /**
+     * Run attempt completion hooks and return the resulting error.
+     */
+    private function completeAttempt(
+        InterceptorInterface $interceptor,
+        OutputContext $ctx,
+        ?\Throwable $error
+    ): ?\Throwable
+    {
+        try {
+            $output = $interceptor
+                ->modifyBeforeAttemptCompletion($ctx, $error);
+            $ctx->replaceOutput($output);
+            $error = null;
+        } catch (\Throwable $e) {
+            $error = $e;
+            $ctx->replaceOutput(null);
+        }
+
+        try {
+            $interceptor->readAfterAttempt($ctx, $error);
+        } catch (\Throwable $e) {
+            $error = $e;
+        }
+
+        return $error;
+    }
+
+    /**
+     * Run execution completion hooks and return the final output.
+     */
+    private function completeExecution(
+        InterceptorInterface $interceptor,
+        OutputContext $ctx,
+        ?\Throwable $error
+    ): SerializableStructInterface
+    {
+        try {
+            $output = $interceptor->modifyBeforeCompletion($ctx, $error);
+            $ctx->replaceOutput($output);
+            $error = null;
+        } catch (\Throwable $e) {
+            $error = $e;
+            $ctx->replaceOutput(null);
+        }
+
+        try {
+            $interceptor->readAfterExecution($ctx, $error);
+        } catch (\Throwable $e) {
+            $error = $e;
+        }
+
+        if ($error !== null) {
+            throw $error;
+        }
+
+        return $output;
+    }
+
+    /**
+     * Serialize the operation input.
+     */
+    private function serialize(
+        OperationInterface $operation,
+        SerializableStructInterface $input,
+        Endpoint $endpoint
+    ): RequestInterface
+    {
+        return $this->config->protocol->serializeRequest(
+            $operation,
+            $input,
+            $endpoint->url
+        );
+    }
+
+    private function resolveEndpoint(
+        OperationInterface $operation,
+        SerializableStructInterface $input,
+        ClientConfig $config
+    ): Endpoint
+    {
+        return $config->endpointResolver->resolveEndpoint(
+            new EndpointResolverParams($operation, $input, $config)
+        );
+    }
+
+    private function applyEndpointHeaders(
+        RequestInterface $request,
+        Endpoint $endpoint
+    ): RequestInterface
+    {
+        $headers = $endpoint->headers;
+        if ($headers === []) {
+            return $request;
+        }
+
+        $rawHeaders = [];
+        foreach ($headers as $name => $value) {
+            $lower = \strtolower($name);
+            $rawHeaders[$lower] = [$name, [(string) $value]];
+        }
+
+        if ($request instanceof SmithyRequest) {
+            return $request->withNormalizedHeaders($rawHeaders);
+        }
+
+        foreach ($rawHeaders as [$name, $values]) {
+            $request = $request->withHeader($name, $values);
+        }
+
+        return $request;
+    }
+
+    private function applyOverrideHeaders(
+        RequestInterface $request,
+        ?RequestOverrideConfig $overrides
+    ): RequestInterface
+    {
+        if ($overrides === null) {
+            return $request;
+        }
+
+        foreach ($overrides->headers as $name => $values) {
+            $request = $request->withHeader($name, $values);
+        }
+
+        return $request;
+    }
+
+    /**
+     * Execute one signed HTTP attempt.
+     *
+     * Returns a triple `[responseContext, outputContext, error]`. On success
+     * `error` is null and `outputContext->output` is populated. On failure
+     * `error` is populated and the contexts describe how far the attempt got.
+     *
+     * @return array{0: ?ResponseContext, 1: OutputContext, 2: ?\Throwable}
+     */
+    private function executeAttempt(
+        InterceptorInterface $interceptor,
+        RequestContext $reqCtx,
+        ResolvedAuthScheme $resolvedAuthScheme,
+        ?HttpRequestOptions $httpOptions
+    ): array
+    {
+        $response = null;
+        $output = null;
+        $error = null;
+        $respCtx = null;
+        $request = $reqCtx->request;
+
+        try {
+            $interceptor->readBeforeAttempt($reqCtx);
+        } catch (\Throwable $e) {
+            $error = $e;
+        }
+
+        if ($error !== null) {
+            return [
+                null,
+                new OutputContext(
+                    $reqCtx->operation,
+                    $reqCtx->input,
+                    $reqCtx->config,
+                    $request,
+                    null,
+                    null
+                ),
+                $error
+            ];
+        }
+
+        try {
+            $request = $interceptor->modifyBeforeSigning($reqCtx);
+            if ($request !== $reqCtx->request) {
+                $reqCtx->replaceRequest($request);
+            }
+
+            $interceptor->readBeforeSigning($reqCtx);
+
+            $identity = $resolvedAuthScheme
+                ->scheme
+                ->getIdentityResolver($this->config)
+                ->resolveIdentity($resolvedAuthScheme->properties);
+            $request = $resolvedAuthScheme
+                ->scheme
+                ->getSigner()
+                ->sign(
+                    $request,
+                    $identity,
+                    $resolvedAuthScheme->properties
+                );
+            $reqCtx->replaceRequest($request);
+
+            $interceptor->readAfterSigning($reqCtx);
+
+            $request = $interceptor->modifyBeforeTransmit($reqCtx);
+            if ($request !== $reqCtx->request) {
+                $reqCtx->replaceRequest($request);
+            }
+
+            $interceptor->readBeforeTransmit($reqCtx);
+
+            $response = $this->config->httpClient->sendRequest(
+                $request,
+                $httpOptions
+            );
+
+            $respCtx = new ResponseContext(
+                $reqCtx->operation,
+                $reqCtx->input,
+                $reqCtx->config,
+                $request,
+                $response
+            );
+
+            $interceptor->readAfterTransmit($respCtx);
+
+            $response = $interceptor->modifyBeforeDeserialization($respCtx);
+            if ($response !== $respCtx->response) {
+                $respCtx->replaceResponse($response);
+            }
+
+            $interceptor->readBeforeDeserialization($respCtx);
+
+            $deserError = null;
+            try {
+                $output = $this->deserializeResponse(
+                    $reqCtx->operation,
+                    $response
+                );
+            } catch (\Throwable $e) {
+                $deserError = $e;
+            }
+
+            $outCtx = new OutputContext(
+                $reqCtx->operation,
+                $reqCtx->input,
+                $reqCtx->config,
+                $request,
+                $response,
+                $output
+            );
+
+            // This hook runs even when deserialization fails.
+            try {
+                $interceptor->readAfterDeserialization($outCtx, $deserError);
+            } catch (\Throwable $e) {
+                $deserError = $e;
+            }
+
+            if ($deserError !== null) {
+                $error = $deserError;
+                $output = null;
+                $outCtx->replaceOutput(null);
+            }
+        } catch (\Throwable $e) {
+            $error = $e;
+        }
+
+        if (!isset($outCtx)) {
+            $outCtx = new OutputContext(
+                $reqCtx->operation,
+                $reqCtx->input,
+                $reqCtx->config,
+                $request,
+                $response,
+                $output
+            );
+        }
+
+        return [$respCtx, $outCtx, $error];
+    }
+
+    private function executeWithoutInterceptors(
+        OperationInterface $operation,
+        SerializableStructInterface $input,
+        ClientConfig $config,
+        ?RequestOverrideConfig $overrides,
+        ?HttpRequestOptions $httpOptions,
+        HttpRequestOptions $effectiveHttpOptions
+    ): SerializableStructInterface
+    {
+        $endpoint = $this->resolveEndpoint($operation, $input, $config);
+        $request = $this->serialize($operation, $input, $endpoint);
+
+        $request = $this->applyEndpointHeaders($request, $endpoint);
+        $request = $this->applyOverrideHeaders($request, $overrides);
+
+        $resolvedAuthScheme = $config
+            ->authSchemeResolver
+            ->resolveAuthScheme(
+                $operation,
+                $endpoint,
+                $config,
+                $overrides?->authSchemePreference
+                    ?? $config->authSchemePreference
+            );
+        $requestFlags = self::resolveRetryRequestFlags($operation, $config);
+        $retryState = $config->retryStrategy->begin(
+            $config->retryScope,
+            $requestFlags
+        );
+
+        $attempt = 1;
+        while (true) {
+            $attemptRequest = $request;
+            $response = null;
+            try {
+                $identity = $resolvedAuthScheme
+                    ->scheme
+                    ->getIdentityResolver($config)
+                    ->resolveIdentity($resolvedAuthScheme->properties);
+                $signedRequest = $resolvedAuthScheme
+                    ->scheme
+                    ->getSigner()
+                    ->sign(
+                        $request,
+                        $identity,
+                        $resolvedAuthScheme->properties
+                    );
+                $attemptRequest = $signedRequest;
+                $response = $config->httpClient->sendRequest(
+                    $signedRequest,
+                    $httpOptions
+                );
+                $output = $this->deserializeResponse(
+                    $operation,
+                    $response
+                );
+            } catch (\Throwable $error) {
+                if ($overrides?->maxAttempts !== null
+                    && $attempt >= $overrides->maxAttempts
+                ) {
+                    throw $error;
+                }
+                try {
+                    $delay = $config->retryStrategy->refresh(
+                        $retryState,
+                        $error
+                    );
+                    if (!self::prepareRequestForRetry(
+                        $attemptRequest,
+                        $response,
+                        $effectiveHttpOptions,
+                        $error
+                    )) {
+                        throw $error;
+                    }
+                    Async::delay($delay);
+                    ++$attempt;
+                } catch (TokenAcquisitionFailedException $e) {
+                    Async::delay($e->delay);
+                    throw $error;
+                }
+
+                continue;
+            }
+
+            $config->retryStrategy->recordSuccess($retryState);
+
+            return $output;
+        }
+    }
+
+    /**
+     * Reset mutable request state before another attempt.
+     */
+    private static function prepareRequestForRetry(
+        RequestInterface $request,
+        ?ResponseInterface $response,
+        HttpRequestOptions $httpOptions,
+        \Throwable $error
+    ): bool
+    {
+        $body = $request->getBody();
+        if ($body->getSize() !== 0) {
+            try {
+                if ($body instanceof RequestStreamInterface
+                    && $body->isReplayable()
+                ) {
+                    $body->rewindForRetry();
+                } elseif ($body->isSeekable()) {
+                    $body->rewind();
+                } elseif (!self::unconsumedRequestBodyCanRetry(
+                    $body,
+                    $response,
+                    $error
+                )) {
+                    return false;
+                }
+            } catch (\Throwable) {
+                return false;
+            }
+        }
+
+        try {
+            $httpOptions->trailers?->rewindForRetry();
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Determine whether a non-replayable body was left untouched.
+     */
+    private static function unconsumedRequestBodyCanRetry(
+        \Psr\Http\Message\StreamInterface $body,
+        ?ResponseInterface $response,
+        \Throwable $error
+    ): bool
+    {
+        if ($response !== null) {
+            return false;
+        }
+
+        $httpError = self::findHttpException($error);
+        if ($httpError !== null) {
+            return $httpError->requestBodySeekable === false
+                && !$httpError->requestBodyStarted
+                && !$httpError->requestBodyFullyConsumed;
+        }
+
+        return $body instanceof RequestStreamInterface
+            && !$body->started()
+            && !$body->fullyConsumed();
+    }
+
+    private static function findHttpException(
+        \Throwable $error
+    ): ?HttpException
+    {
+        do {
+            if ($error instanceof HttpException) {
+                return $error;
+            }
+
+            $error = $error->getPrevious();
+        } while ($error !== null);
+
+        return null;
+    }
+
+    private function deserializeResponse(
+        OperationInterface $operation,
+        ResponseInterface $response
+    ): SerializableStructInterface
+    {
+        return $this->config->protocol->deserializeResponse(
+            $operation,
+            $response
+        );
+    }
+
+    /**
+     * Return retry request flags for this execution.
+     */
+    private static function resolveRetryRequestFlags(
+        OperationInterface $operation,
+        ClientConfig $config
+    ): int
+    {
+        $resolver = $config->context[
+            RetryRequestFlagResolverInterface::CONFIG_KEY
+        ] ?? null;
+        if (!$resolver instanceof RetryRequestFlagResolverInterface) {
+            return 0;
+        }
+
+        return $resolver->resolve($operation, $config);
+    }
+}

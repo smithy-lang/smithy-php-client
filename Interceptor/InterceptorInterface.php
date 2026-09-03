@@ -11,13 +11,13 @@ use Smithy\Core\Serde\SerializableStructInterface;
 /**
  * A hook contract for the client execution pipeline.
  *
- * The pipeline calls each hook on every registered interceptor at fixed
- * points in the request/response lifecycle. Hooks come in two flavours:
+ * The pipeline calls each hook at fixed points in the request/response
+ * lifecycle. Hooks come in two flavours:
  *
  *  - **Read hooks** (`readBefore*`, `readAfter*`) observe in-flight data
- *    without changing it. If a read hook throws, the exception is stored;
- *    subsequent interceptors' hooks at the same point still run; then
- *    execution jumps to the relevant completion hook.
+ *    without changing it. Most read hooks stop the current stage when they
+ *    throw. The execution-boundary and attempt-boundary read hooks invoke
+ *    every interceptor before surfacing the latest error.
  *  - **Modify hooks** (`modifyBefore*`) return a value that replaces the
  *    in-flight data for subsequent interceptors and pipeline stages. A
  *    thrown modify hook aborts the current stage and jumps to completion.

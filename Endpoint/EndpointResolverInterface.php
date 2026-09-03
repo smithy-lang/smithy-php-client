@@ -7,8 +7,8 @@ namespace Smithy\Client\Endpoint;
 /**
  * Resolve an endpoint for an operation.
  *
- * Called once per attempt from inside the retry loop. Retried requests
- * may resolve a different endpoint if context changes.
+ * Called once per operation execution before the retry loop. Retried
+ * attempts reuse the resolved endpoint.
  *
  * Implementations:
  *  - {@see StaticEndpointResolver} always returns the same endpoint.

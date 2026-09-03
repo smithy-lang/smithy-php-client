@@ -9,10 +9,10 @@ use Smithy\Client\ClientConfig;
 /**
  * Named authentication scheme: identity resolver plus signer.
  *
- * The pipeline picks a scheme by consulting the
- * {@see AuthSchemeResolverInterface}, then calls `getIdentityResolver()`
- * and `getSigner()` on the winning scheme. The scheme is responsible for
- * wiring the correct resolver from the client config.
+ * An {@see AuthSchemeResolverInterface} selects the scheme. The client
+ * pipeline then calls `getIdentityResolver()` and `getSigner()` on the
+ * resolved scheme. The scheme is responsible for wiring the correct
+ * resolver from the client config.
  *
  * Scheme IDs follow Smithy convention: `smithy.api#httpBearerAuth`,
  * `smithy.api#noAuth`, and vendor-defined scheme IDs.

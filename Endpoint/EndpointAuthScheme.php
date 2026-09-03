@@ -8,10 +8,10 @@ namespace Smithy\Client\Endpoint;
  * Carry an auth scheme override attached to a resolved {@see Endpoint}.
  *
  * Endpoint rulesets can direct the client to use a specific auth scheme
- * for a given endpoint. The pipeline consults endpoint-provided schemes
- * before falling back to the client's default
- * {@see \Smithy\Client\Auth\AuthSchemeResolverInterface}. The scheme ID is
- * the canonical Smithy shape ID used by
+ * for a given endpoint. The
+ * {@see \Smithy\Client\Auth\AuthSchemeResolverInterface} considers these
+ * endpoint-provided schemes together with modeled schemes and caller
+ * preferences. The scheme ID is the canonical Smithy shape ID used by
  * {@see \Smithy\Client\Auth\AuthSchemeInterface::getSchemeId()}.
  */
 final class EndpointAuthScheme

@@ -7,13 +7,14 @@ namespace Smithy\Client\Endpoint;
 /**
  * A resolved endpoint for an operation.
  *
- * Produced by an {@see EndpointResolverInterface} inside the attempt loop.
- * The pipeline uses `url` as the base for request URI construction; the
- * protocol layer prepends any endpoint path onto the operation's HTTP path.
+ * Produced by an {@see EndpointResolverInterface} before the attempt loop
+ * and reused for retries. The pipeline uses `url` as the base for request URI
+ * construction; the protocol layer prepends any endpoint path onto the
+ * operation's HTTP path.
  *
- * Auth schemes carried on the endpoint override the client's default
- * auth-scheme resolver decision for the execution. Headers are merged
- * into the request before signing.
+ * The auth-scheme resolver considers schemes carried on the endpoint when
+ * selecting authentication for the execution. Headers are merged into the
+ * request before signing.
  */
 final class Endpoint
 {

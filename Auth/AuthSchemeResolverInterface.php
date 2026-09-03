@@ -5,25 +5,25 @@ declare(strict_types=1);
 namespace Smithy\Client\Auth;
 
 use Smithy\Client\ClientConfig;
+use Smithy\Client\Endpoint\Endpoint;
 use Smithy\Core\Shape\OperationInterface;
 
 /**
- * Choose which auth schemes to try for an operation, in priority order.
- *
- * Returns a list of scheme IDs. The pipeline walks the list and uses the
- * first scheme it finds in the client's supported schemes. Endpoint-
- * supplied {@see \Smithy\Client\Endpoint\EndpointAuthScheme}s take
- * precedence over this resolver for the attempts that use that endpoint.
+ * Resolve the supported auth scheme used for an operation.
  */
 interface AuthSchemeResolverInterface
 {
     /**
-     * Resolve auth schemes for an operation.
+     * Resolve an auth scheme for an operation and endpoint.
      *
-     * @return list<string> Auth scheme shape IDs in priority order.
+     * @param list<string> $preference Auth scheme names in preferred order.
+     *
+     * @throws \RuntimeException If no scheme can be resolved.
      */
     public function resolveAuthScheme(
         OperationInterface $operation,
-        ClientConfig $config
-    ): array;
+        Endpoint $endpoint,
+        ClientConfig $config,
+        array $preference = []
+    ): ResolvedAuthScheme;
 }

@@ -8,12 +8,12 @@ use Smithy\Client\ClientConfig;
 use Smithy\Core\Shape\OperationInterface;
 
 /**
- * Return a fixed list of scheme IDs for every operation.
+ * Resolve from a fixed list of auth scheme IDs for every operation.
  *
- * Constructed with the scheme IDs in the order the pipeline should try
- * them. Useful for explicit overrides and tests.
+ * Constructed with scheme IDs in priority order. Useful for explicit
+ * overrides and tests.
  */
-final class StaticAuthSchemeResolver implements AuthSchemeResolverInterface
+final class StaticAuthSchemeResolver extends AuthSchemeResolver
 {
     /**
      * @param list<string> $schemeIds Scheme IDs in priority order.
@@ -30,8 +30,8 @@ final class StaticAuthSchemeResolver implements AuthSchemeResolverInterface
         return new self([NoAuthScheme::ID]);
     }
 
-    /** @inheritDoc */
-    public function resolveAuthScheme(
+    /** @return list<string> */
+    protected function resolveAuthSchemeIds(
         OperationInterface $operation,
         ClientConfig $config
     ): array

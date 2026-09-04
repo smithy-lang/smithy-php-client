@@ -1,0 +1,20 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Smithy\Client\Plugin;
+
+use Smithy\Client\ClientConfig;
+use Smithy\Client\Interceptor\HttpChecksumInterceptor;
+
+/**
+ * Register required HTTP checksum handling.
+ */
+final class HttpChecksumPlugin implements PluginInterface
+{
+    /** @inheritDoc */
+    public function configure(ClientConfig $config): ClientConfig
+    {
+        return $config->withInterceptor(new HttpChecksumInterceptor());
+    }
+}

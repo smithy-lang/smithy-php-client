@@ -83,7 +83,7 @@ final readonly class RequestOverrideConfig
         }
 
         $maxAttempts = null;
-        if (\array_key_exists(self::RETRIES, $overrides)) {
+        if (isset($overrides[self::RETRIES])) {
             $retries = $overrides[self::RETRIES];
             if (!\is_int($retries) || $retries < 0) {
                 throw new \InvalidArgumentException(
@@ -102,7 +102,7 @@ final readonly class RequestOverrideConfig
         }
 
         $authSchemePreference = null;
-        if (\array_key_exists(self::AUTH, $overrides)) {
+        if (isset($overrides[self::AUTH])) {
             $authSchemePreference = self::authSchemePreference(
                 $overrides[self::AUTH]
             );
@@ -320,8 +320,8 @@ final readonly class RequestOverrideConfig
             }
         }
 
-        if (\array_key_exists('allow_redirects', $options)
-            && \array_key_exists('follow_redirects', $options)
+        if (isset($options['allow_redirects'])
+            && isset($options['follow_redirects'])
         ) {
             throw new \InvalidArgumentException(
                 self::HTTP
@@ -334,7 +334,7 @@ final readonly class RequestOverrideConfig
     /** @param array<string, mixed> $options */
     private static function redirectOption(array $options): string
     {
-        return \array_key_exists('allow_redirects', $options)
+        return isset($options['allow_redirects'])
             ? 'allow_redirects'
             : 'follow_redirects';
     }
@@ -346,7 +346,7 @@ final readonly class RequestOverrideConfig
         float $default
     ): float
     {
-        if (!\array_key_exists($name, $options)) {
+        if (!isset($options[$name])) {
             return $default;
         }
 
@@ -367,7 +367,7 @@ final readonly class RequestOverrideConfig
         int $default
     ): int
     {
-        if (!\array_key_exists($name, $options)) {
+        if (!isset($options[$name])) {
             return $default;
         }
 
@@ -387,7 +387,7 @@ final readonly class RequestOverrideConfig
         bool $default
     ): bool
     {
-        if (!\array_key_exists($name, $options)) {
+        if (!isset($options[$name])) {
             return $default;
         }
 
@@ -407,7 +407,7 @@ final readonly class RequestOverrideConfig
         ?string $default
     ): ?string
     {
-        if (!\array_key_exists($name, $options)) {
+        if (!isset($options[$name])) {
             return $default;
         }
 
@@ -439,7 +439,7 @@ final readonly class RequestOverrideConfig
         ?object $default
     ): ?object
     {
-        if (!\array_key_exists($name, $options)) {
+        if (!isset($options[$name])) {
             return $default;
         }
 

@@ -299,7 +299,7 @@ final class StdFunctions
                         return null;
                     }
                     if ($kind === 'prop') {
-                        if (!\array_key_exists($value, $current)) {
+                        if (!isset($current[$value])) {
                             return null;
                         }
                         $current = $current[$value];
@@ -308,7 +308,7 @@ final class StdFunctions
                         if ($index < 0) {
                             $index += \count($current);
                         }
-                        if (!\array_key_exists($index, $current)) {
+                        if (!isset($current[$index])) {
                             return null;
                         }
                         $current = $current[$index];

@@ -267,47 +267,26 @@ class ClientConfig
      * Shallow copy the config, overriding fields named in `$overrides`.
      * Subclasses override this to include their own fields.
      *
-     * Uses `array_key_exists` rather than `??` so a caller can explicitly
-     * reset a nullable field to `null`. `??` would silently fall through
-     * to the current value on any `null` override.
+     * Explicit `null` values are ignored and preserve the current value.
      *
      * @param array<string, mixed> $overrides
      */
     protected function copyWith(array $overrides): static
     {
-        $protocol = \array_key_exists('protocol', $overrides)
-            ? $overrides['protocol']
-            : $this->protocol;
-        $httpClient = \array_key_exists('httpClient', $overrides)
-            ? $overrides['httpClient']
-            : $this->httpClient;
-        $endpointResolver = \array_key_exists('endpointResolver', $overrides)
-            ? $overrides['endpointResolver']
-            : $this->endpointResolver;
-        $interceptors = \array_key_exists('interceptors', $overrides)
-            ? $overrides['interceptors']
-            : $this->interceptorChain;
-        $supportedAuthSchemes = \array_key_exists(
-            'supportedAuthSchemes',
-            $overrides
-        )
-            ? $overrides['supportedAuthSchemes']
-            : $this->supportedAuthSchemes;
-        $authSchemeResolver = \array_key_exists(
-            'authSchemeResolver',
-            $overrides
-        )
-            ? $overrides['authSchemeResolver']
-            : $this->authSchemeResolver;
-        $retryStrategy = \array_key_exists('retryStrategy', $overrides)
-            ? $overrides['retryStrategy']
-            : $this->retryStrategy;
-        $retryScope = \array_key_exists('retryScope', $overrides)
-            ? $overrides['retryScope']
-            : $this->retryScope;
-        $context = \array_key_exists('context', $overrides)
-            ? $overrides['context']
-            : $this->context;
+        $protocol = $overrides['protocol'] ?? $this->protocol;
+        $httpClient = $overrides['httpClient'] ?? $this->httpClient;
+        $endpointResolver =
+            $overrides['endpointResolver'] ?? $this->endpointResolver;
+        $interceptors =
+            $overrides['interceptors'] ?? $this->interceptorChain;
+        $supportedAuthSchemes = $overrides['supportedAuthSchemes']
+            ?? $this->supportedAuthSchemes;
+        $authSchemeResolver = $overrides['authSchemeResolver']
+            ?? $this->authSchemeResolver;
+        $retryStrategy =
+            $overrides['retryStrategy'] ?? $this->retryStrategy;
+        $retryScope = $overrides['retryScope'] ?? $this->retryScope;
+        $context = $overrides['context'] ?? $this->context;
 
         return new static(
             protocol: $protocol,
@@ -319,11 +298,8 @@ class ClientConfig
             retryStrategy: $retryStrategy,
             retryScope: $retryScope,
             context: $context,
-            authSchemePreference: \array_key_exists(
-                'authSchemePreference',
-                $overrides
-            ) ? $overrides['authSchemePreference']
-                : $this->authSchemePreference
+            authSchemePreference: $overrides['authSchemePreference']
+                ?? $this->authSchemePreference
         );
     }
 

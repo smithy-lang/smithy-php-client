@@ -482,7 +482,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
             $document = ArrayShapeSerializer::toArray($input);
             foreach ($context[1] as [$name, $path]) {
                 $value = Env::search($path, $document);
-                if ($value !== null && !\array_key_exists($name, $inputs)) {
+                if ($value !== null && !isset($inputs[$name])) {
                     $inputs[$name] = $value;
                 }
             }

@@ -10,8 +10,8 @@ namespace Smithy\Client\Auth;
 final class IdentityResolverRegistration
 {
     /**
-     * @param null|callable():void $invalidator Optional invalidation hook for
-     *        chain-level refresh events.
+     * @param null|callable(): void $invalidator Optional invalidation hook for
+     *                                          chain-level refresh events.
      */
     public function __construct(
         public readonly IdentityResolverInterface $resolver,

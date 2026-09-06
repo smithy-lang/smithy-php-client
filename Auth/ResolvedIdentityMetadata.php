@@ -6,10 +6,6 @@ namespace Smithy\Client\Auth;
 
 /**
  * Describe which provider resolved an identity.
- *
- * Future auth/reporting layers use this to surface the winning provider
- * name and emit provider-specific feature IDs into user-agent telemetry
- * without changing {@see IdentityResolverInterface}'s return type.
  */
 final class ResolvedIdentityMetadata
 {

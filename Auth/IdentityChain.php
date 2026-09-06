@@ -184,10 +184,20 @@ final class IdentityChain implements IdentityChainInterface
     {
         $seenNames = [];
         $claimedSlots = [];
-        $slotSet = \array_fill_keys($slotOrder, true);
+        $slotSet = [];
         $before = [];
         $standard = [];
         $after = [];
+
+        foreach ($slotOrder as $slot) {
+            if (isset($slotSet[$slot])) {
+                throw new \InvalidArgumentException(
+                    'Duplicate provider slot registered: ' . $slot . '.'
+                );
+            }
+
+            $slotSet[$slot] = true;
+        }
 
         foreach ($providers as $provider) {
             $name = $provider->name();
@@ -196,6 +206,7 @@ final class IdentityChain implements IdentityChainInterface
                     'Provider names must not be empty.'
                 );
             }
+
             if (isset($seenNames[$name])) {
                 throw new \InvalidArgumentException(
                     'Duplicate provider name registered: ' . $name . '.'
@@ -242,9 +253,11 @@ final class IdentityChain implements IdentityChainInterface
             foreach ($before[$slot] ?? [] as $provider) {
                 $sorted[] = $provider;
             }
+
             if (isset($standard[$slot])) {
                 $sorted[] = $standard[$slot];
             }
+
             foreach ($after[$slot] ?? [] as $provider) {
                 $sorted[] = $provider;
             }

@@ -35,6 +35,8 @@ final class ChainSetup
     }
 
     /**
+     * Return all setup properties.
+     *
      * @return array<string, mixed>
      */
     public function properties(): array
@@ -73,8 +75,7 @@ final class ChainSetup
     /**
      * Set the provider whose resolver registrations are being collected.
      *
-     * @internal Called by {@see IdentityChain} immediately before invoking a
-     *           provider's `setup()` method.
+     * @internal
      *
      * @return void
      */
@@ -84,14 +85,15 @@ final class ChainSetup
     {
         $this->currentProvider = new ResolvedIdentityMetadata(
             providerName: $provider->name(),
-            featureIds: \array_values($provider->featureIds())
+            featureIds: $provider->featureIds()
         );
     }
 
     /**
      * Add a resolver to the identity chain.
      *
-     * @param null|callable():void $invalidator
+     * @param null|callable(): void $invalidator
+     * @param null|list<string> $featureIds
      *
      * @return void
      */
@@ -118,7 +120,8 @@ final class ChainSetup
     /**
      * Add a terminal resolver to the identity chain.
      *
-     * @param null|callable():void $invalidator
+     * @param null|callable(): void $invalidator
+     * @param null|list<string> $featureIds
      *
      * @return void
      */
@@ -158,6 +161,8 @@ final class ChainSetup
     }
 
     /**
+     * Return detected provider slots.
+     *
      * @return list<string>
      */
     public function detectedSlots(): array
@@ -166,6 +171,8 @@ final class ChainSetup
     }
 
     /**
+     * Return resolver registrations in insertion order.
+     *
      * @return list<IdentityResolverRegistration>
      */
     public function registrations(): array
@@ -206,7 +213,7 @@ final class ChainSetup
 
         return new ResolvedIdentityMetadata(
             providerName: $metadata->providerName,
-            featureIds: \array_values($featureIds)
+            featureIds: $featureIds
         );
     }
 }

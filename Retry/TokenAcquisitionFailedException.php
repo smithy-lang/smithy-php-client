@@ -8,18 +8,12 @@ use Smithy\Core\Exception\ApiException;
 use Smithy\Core\Exception\ErrorFault;
 
 /**
- * Thrown when a retry strategy cannot issue a token.
+ * Thrown when a retry strategy cannot grant another attempt.
  *
- * Two cases:
- *  - Initial acquisition fails because the token bucket is empty (client-side
- *    rate limiting has kicked in).
- *  - Refresh fails because retries are exhausted or the last error is
- *    classified as non-retryable.
- *
- * The pipeline surfaces this to the caller as-is; the wrapped error (if any)
- * is available via `getPrevious()`. `delay` is non-zero for cases like
- * long-polling exhaustion where the strategy wants the pipeline to wait
- * before returning the terminal failure.
+ * The previous exception identifies the failed attempt, while `state`
+ * captures the strategy state at exhaustion. `delay` is non-zero when
+ * the strategy wants the pipeline to wait before returning the terminal
+ * failure, such as when long-polling retry capacity is exhausted.
  */
 class TokenAcquisitionFailedException extends ApiException
 {

@@ -13,7 +13,13 @@ namespace Smithy\Client\Retry;
 final class RetryState
 {
     /**
-     * Create retry state.
+     * Create state for one operation invocation.
+     *
+     * @param string $scope Retry scope used to share strategy capacity.
+     * @param int $requestFlags Strategy-specific request flags.
+     * @param int $attempt Current one-based attempt number.
+     * @param int $lastRetryCost Capacity consumed by the last retry.
+     * @param int $capacityRemaining Capacity remaining for the scope.
      */
     public function __construct(
         public readonly string $scope,

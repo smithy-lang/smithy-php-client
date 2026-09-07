@@ -18,15 +18,15 @@ namespace Smithy\Client\Retry;
  *
  * Implementations:
  *  - {@see NoRetryStrategy} single attempt, never retries.
- *  - Standard retry strategies use exponential backoff with jitter and
- *    a token-bucket circuit breaker.
- *  - Adaptive retry strategies add client-side rate limiting on top of
- *    standard retry behavior.
+ *  - `Aws\Core\Retry\StandardRetryStrategy` (aws-sdk-php) exponential
+ *    backoff with jitter and a token-bucket circuit breaker.
+ *  - `Aws\Core\Retry\AdaptiveRetryStrategy` (aws-sdk-php) adds
+ *    client-side rate limiting on top of standard.
  */
 interface RetryStrategyInterface
 {
     /**
-     * @param string $scope Retry scope, such as a service or tenant key.
+     * @param string $scope Retry scope (e.g., an ARN or service name).
      *               Multiple executions with the same scope share a token
      *               bucket.
      * @param int $requestFlags Strategy-specific request flags.
@@ -45,14 +45,11 @@ interface RetryStrategyInterface
     /**
      * Record a successful attempt so the strategy can return capacity
      * to its token bucket. No-op for strategies without a bucket.
-     *
-     * @return void
      */
     public function recordSuccess(RetryState $state): void;
 
     /**
-     * Maximum attempts (initial + retries) this strategy will make.
-     * The pipeline may use this for pre-flight validation.
+     * Return the maximum number of attempts, including the initial attempt.
      */
     public function maxAttempts(): int;
 }

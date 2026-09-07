@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace Smithy\Client\Endpoint\Bytecode;
 
 /**
- * Opcode and condition-type constants for the endpoint bytecode evaluator.
+ * Define opcode and condition-type constants for endpoint bytecode.
  *
- * These are integer constants read from the packed instruction stream by
- * {@see Evaluator}. Numeric values match smithy-java's rules-engine so that
- * bytecode blobs are portable across languages if we ever need to swap them.
+ * {@see Evaluator} reads these integer values from the packed instruction
+ * stream. The numeric assignments align with smithy-java's rules engine,
+ * allowing compilers and runtimes to share the same bytecode model.
  *
- * The class is never instantiated. All members are class-level constants.
+ * This class is a constants namespace and cannot be instantiated.
  */
 final class Opcodes
 {
@@ -116,7 +116,7 @@ final class Opcodes
     /** Push `true` iff register is boolean `false`. Operand: 1-byte register. */
     public const TEST_REGISTER_IS_FALSE = 30;
 
-    /** Pop two values, push equality (loose deep-equality). */
+    /** Pop two values and push their strict equality. */
     public const EQUALS = 31;
 
     /** Pop two strings, push equality. */
@@ -205,17 +205,14 @@ final class Opcodes
     public const BUILD_URI = 53;
 
     /**
-     * Same stack layout as MAPN, but produces a lightweight property-getter
-     * object instead of a general map. Currently equivalent to MAPN in PHP.
-     * kept as a separate opcode for compatibility with the Java bytecode.
+     * Build a structure from the MAPN stack layout.
+     *
+     * This remains distinct from MAPN for Java bytecode compatibility.
      */
     public const STRUCTN = 54;
 
     /**
-     * Static-template fusion. Replaces the LOAD_CONST / LOAD_REGISTER /
-     * GET_PROPERTY_REG per-segment sequence + RESOLVE_TEMPLATE with a
-     * single opcode that walks a compact metadata record and emits the
-     * concatenated string in one arm.
+     * Resolve a template from compact segment metadata.
      *
      * Operands: 2-byte constant-pool index pointing at a
      * `list<array{0:int, 1:mixed}>` where the leading int is a segment

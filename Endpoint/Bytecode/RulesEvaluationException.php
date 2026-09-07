@@ -7,13 +7,11 @@ namespace Smithy\Client\Endpoint\Bytecode;
 use RuntimeException;
 
 /**
- * Thrown when endpoint bytecode fails to produce a valid endpoint.
+ * Report a rules error or invalid endpoint bytecode evaluation.
  *
- * Two sources:
- *  - The ruleset explicitly returned an error result (e.g., "FIPS is
- *    enabled but this partition does not support FIPS"). Message is the
- *    error string from the ruleset.
- *  - The evaluator hit an internal fault (bad opcode, stack underflow,
- *    type mismatch). Message includes the offending program counter.
+ * The ruleset may explicitly return an error, such as an unsupported
+ * parameter combination, or the evaluator may encounter an internal fault
+ * such as an unknown opcode, invalid result reference, or a program that
+ * reaches the end without returning.
  */
 final class RulesEvaluationException extends RuntimeException {}

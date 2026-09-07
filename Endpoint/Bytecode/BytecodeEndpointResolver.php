@@ -17,22 +17,21 @@ use Smithy\Core\Shape\OperationInterface;
 use Smithy\Core\Shape\Utils\ArrayShapeSerializer;
 
 /**
- * Adapts an {@see Evaluator} to the Smithy client contract.
+ * Adapt an endpoint bytecode {@see Evaluator} to the Smithy client contract.
  *
- * The resolver builds the parameter map from modeled operation context and
- * client-supplied endpoint parameters, delegates to the evaluator, and
- * returns the resulting {@see Endpoint}.
- *
- * Endpoint rule evaluation remains in {@see Evaluator}. This adapter owns
- * parameter collection and result caching.
+ * The resolver builds the parameter map from client-wide static context,
+ * modeled operation context, and request-specific endpoint parameters. It
+ * then delegates rules evaluation and returns the resulting {@see Endpoint}.
  *
  * Successful resolutions are cached by the bytecode's declared endpoint
- * inputs. The cache has a per-resolver last-result slot and a bounded
- * process-wide map. Keys include resolver configuration so different
- * static contexts and auth mappings remain isolated.
+ * inputs. A per-resolver last-result slot handles consecutive identical
+ * requests, while a bounded process-wide cache allows equivalent resolver
+ * instances to share results. Cache namespaces include bytecode identity,
+ * static context, auth mappings, key builders, and opcode handlers so
+ * incompatible configurations remain isolated.
  *
- * @internal Caching is a private implementation detail. External code
- * should depend on {@see EndpointResolverInterface} - the cache shape,
+ * @internal Caching is an implementation detail. External code should
+ * depend on {@see EndpointResolverInterface}; the cache representation,
  * eviction policy, and default size may change without notice.
  */
 final class BytecodeEndpointResolver implements EndpointResolverInterface
@@ -43,11 +42,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
     private const STATIC_CONTEXT_PARAMS_TRAIT =
         'smithy.rules#staticContextParams';
 
-    /**
-     * Default upper bound on the L2 cache. 128 covers typical client
-     * working sets while capping memory at a few kilobytes of
-     * `Endpoint` values.
-     */
+    /** Default upper bound on the shared endpoint cache. */
     private const CACHE_MAX_ENTRIES = 128;
 
     private const KEY_MISSING = "\x00";
@@ -67,57 +62,21 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
     /** @var array<string, string> */
     private readonly array $endpointAuthSchemeIds;
 
-    /**
-     * Snapshot of `$bytecode->inputRegisterMap`'s keys, captured once at
-     * construction. Iterating this list on every resolve gives the
-     * canonical parameter ordering that also drives the cache-key
-     * layout - anything outside this set is ignored, matching the
-     * evaluator's own contract.
-     *
-     * @var list<string>
-     */
-    private readonly array $inputNames;
-
     /** @var array<string, int> */
     private readonly array $inputRegisterMap;
 
-    /**
-     * Effective cache cap. Zero disables the L2 map (but the L1 slot
-     * still fires for consecutive-identical resolves - that's just two
-     * property assignments, not worth suppressing).
-     */
+    /** Effective shared-cache limit. Zero disables shared caching. */
     private readonly int $cacheMax;
 
-    /**
-     * Namespace prefix prepended to every L2 cache key produced by this
-     * resolver. It encodes the bytecode identity and resolver
-     * configuration. Resolvers share entries only when their bytecode,
-     * static context, auth mappings, and key builder match.
-     *
-     * Each namespace component is length-prefixed so its boundary with
-     * the cache-key body is unambiguous.
-     */
+    /** Cache namespace for the bytecode and resolver configuration. */
     private readonly string $resolverNamespace;
 
-    /**
-     * L1: last resolved key. The endpoint slot determines whether this
-     * key has been populated, so an empty key remains valid for a
-     * ruleset with no inputs.
-     */
+    /** Last resolved cache key. */
     private string $lastKey = '';
 
     private ?Endpoint $lastEndpoint = null;
 
     /**
-     * Shared L2 cache across every resolver in the process. Keys carry
-     * their resolver's {@see self::$resolverNamespace} prefix so two
-     * resolvers built from different bytecodes, static contexts, or
-     * endpoint auth mappings stay isolated. Eviction is FIFO across the
-     * entire map.
-     *
-     * Marked `protected` so tests can reset it between cases. External
-     * callers have no reason to touch it.
-     *
      * @var array<string, array{
      *     Bytecode,
      *     array<string, mixed>,
@@ -129,29 +88,10 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
      */
     protected static array $sharedCache = [];
 
-    /**
-     * Optional codegen-supplied cache-key builder. When set, replaces
-     * the reflective loop in {@see self::buildCacheKey()} with a fully
-     * inlined per-service closure. The closure receives the same
-     * `$inputs` map the loop would consume and must produce a stable
-     * byte string using the key format documented above.
-     *
-     * Codegen emits a matching `<Service>EndpointKeyBuilder::build()`
-     * when
-     * {@see \Smithy\Codegen\CodegenSettings::$generateEndpointKeyBuilder}
-     * is on. Dynamic clients leave this null and use the generic loop.
-     *
-     * @var (\Closure(array<string, mixed>): string)|null
-     */
+    /** @var (\Closure(array<string, mixed>): string)|null */
     private readonly ?\Closure $keyBuilder;
 
     /**
-     * Cached context descriptors keyed by operation runtime identity.
-     *
-     * Tuple entries are context-param member bindings, JMESPath bindings,
-     * and operation static parameters. False means the operation contributes
-     * no endpoint context.
-     *
      * @var array<string, false|array{
      *     list<array{Schema, string}>,
      *     list<array{string, string}>,
@@ -174,23 +114,23 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
     /**
      * Create an endpoint resolver.
      *
-     * @param Bytecode                     $bytecode       Compiled ruleset.
-     * @param array<string, mixed>         $staticContext  Client-wide
-     *                                     static parameters applied to
-     *                                     every resolution.
-     * @param OpcodeHandlerInterface|null  $handler        Optional vendor
-     *                                     handler for opcodes >= 56.
-     * @param int|null                     $cacheSize      Cap on the L2
-     *                                     result cache. `null` uses
-     *                                     {@see self::CACHE_MAX_ENTRIES}.
-     *                                     `0` disables the L2 map.
+     * @param Bytecode $bytecode Compiled endpoint ruleset.
+     * @param array<string, mixed> $staticContext Client-wide static
+     *                                            parameters applied to
+     *                                            every resolution.
+     * @param OpcodeHandlerInterface|null $handler Optional vendor handler
+     *                                             for extended opcodes.
+     * @param int|null $cacheSize Shared-cache entry limit. `null` uses
+     *                            {@see self::CACHE_MAX_ENTRIES}; zero
+     *                            disables shared caching.
      * @param (\Closure(array<string, mixed>): string)|null $keyBuilder
-     *                                Optional codegen-supplied cache-key builder. See
-     *                                {@see self::$keyBuilder} for the contract. Dynamic clients
-     *                                leave this null.
+     *                            Optional generated cache-key builder. It
+     *                            receives the merged input map and must
+     *                            return a stable key using the same logical
+     *                            inputs as {@see self::buildCacheKey()}.
      * @param array<string, string> $endpointAuthSchemeIds Raw endpoint
-     *                                auth scheme names mapped to canonical
-     *                                Smithy shape IDs.
+     *                            auth scheme names mapped to canonical
+     *                            Smithy shape IDs.
      */
     public function __construct(
         Bytecode $bytecode,
@@ -222,11 +162,6 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
             $handler,
             $endpointAuthSchemeIds
         );
-        // `array_keys` on the input-register map returns the parameter
-        // names in the compiled ordering (PHP arrays are insertion-
-        // ordered), which is exactly the order the evaluator itself
-        // iterates them in.
-        $this->inputNames = \array_keys($bytecode->inputRegisterMap);
         $this->inputRegisterMap = $bytecode->inputRegisterMap;
         $this->cacheMax = $cacheSize ?? self::CACHE_MAX_ENTRIES;
         $this->keyBuilder = $keyBuilder;
@@ -239,7 +174,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
             $staticContext,
             $endpointAuthSchemeIds,
             $keyBuilder === null ? null : \spl_object_id($keyBuilder),
-            $handler === null ? null : \spl_object_id($handler),
+            $handler === null ? null : \spl_object_id($handler)
         ];
         $configDigest = $staticContext === []
             && $endpointAuthSchemeIds === []
@@ -270,14 +205,11 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
         $inputs = $this->staticContext;
 
         if ($operationContext !== false) {
-            foreach (
-                $this->collectOperationContext(
-                    $operationContext,
-                    $params->input
-                ) as $name => $value
-            ) {
-                $inputs[$name] = $value;
-            }
+            $this->collectOperationContext(
+                $operationContext,
+                $params->input,
+                $inputs
+            );
         }
 
         $context = $params->config->context[
@@ -313,28 +245,19 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
             : null;
         if ($cached !== null && $this->isSharedCacheHit($cached)) {
             $this->lastKey = $key;
+
             return $this->lastEndpoint = $cached[5];
         }
+
         if ($cached !== null) {
             unset(self::$sharedCache[$namespacedKey]);
         }
 
-        // Miss: run the evaluator. Errors propagate - we don't cache
-        // exception paths (they're rare and the throw is cheap
-        // relative to a full BDD walk anyway. Caching them would
-        // require serializing the exception state which isn't worth
-        // the code complexity).
+        // Do not cache evaluation errors.
         $endpoint = $this->evaluator->evaluate($inputs);
 
-        // Populate both tiers. The L2 write only fires when the cap
-        // is non-zero. The L1 slot always updates.
         if ($this->cacheMax > 0) {
             while (\count(self::$sharedCache) >= $this->cacheMax) {
-                // FIFO eviction: drop the oldest entry. `array_shift`
-                // on a string-keyed array is O(1) since PHP 7.x - no
-                // numeric-index reindexing pass. Eviction is
-                // process-wide, matching the cache's process-wide
-                // shape.
                 \array_shift(self::$sharedCache);
             }
             self::$sharedCache[$namespacedKey] = [
@@ -348,6 +271,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
         }
         $this->lastKey = $key;
         $this->lastEndpoint = $endpoint;
+
         return $endpoint;
     }
 
@@ -444,7 +368,12 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
     }
 
     /**
-     * Materialize one operation's request-scoped endpoint context.
+     * Merge one operation's request-scoped context into endpoint inputs.
+     *
+     * Directly bound input members are applied first. JMESPath bindings
+     * fill names that were not resolved by a direct member, and modeled
+     * operation-static values are applied last. This mirrors Smithy's
+     * operation context precedence without allocating an intermediate map.
      *
      * @param array{
      *     list<array{Schema, string}>,
@@ -452,14 +381,17 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
      *     array<string, mixed>
      * } $context
      *
-     * @return array<string, mixed>
+     * @param array<string, mixed> $inputs
+     *
+     * @return void
      */
     private function collectOperationContext(
         array $context,
-        SerializableStructInterface $input
-    ): array
+        SerializableStructInterface $input,
+        array &$inputs
+    ): void
     {
-        $inputs = [];
+        $resolved = [];
         foreach ($context[0] as [$member, $name]) {
             $value = $input->getMemberValue($member);
             if ($member->isRequired()
@@ -470,11 +402,13 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
                 )
             ) {
                 throw new \InvalidArgumentException(
-                    "Required endpoint context parameter {$name} must not be empty."
+                    "Required endpoint context parameter {$name} must "
+                        . 'not be empty.'
                 );
             }
             if ($value !== null) {
                 $inputs[$name] = $value;
+                $resolved[$name] = true;
             }
         }
 
@@ -482,7 +416,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
             $document = ArrayShapeSerializer::toArray($input);
             foreach ($context[1] as [$name, $path]) {
                 $value = Env::search($path, $document);
-                if ($value !== null && !isset($inputs[$name])) {
+                if ($value !== null && !isset($resolved[$name])) {
                     $inputs[$name] = $value;
                 }
             }
@@ -491,8 +425,6 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
         foreach ($context[2] as $name => $value) {
             $inputs[$name] = $value;
         }
-
-        return $inputs;
     }
 
     /**
@@ -506,24 +438,26 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
     }
 
     /**
-     * Build a stable, prefix-free cache key from the input map. Only
-     * keys listed in the bytecode's input register map contribute.
+     * Build a stable, unambiguous key from declared endpoint inputs.
      *
-     * @param array<string, mixed> $inputs Merged static + config +
-     *                      per-request parameter map.
+     * Only names present in the bytecode's input register map contribute,
+     * in register-definition order. Type markers distinguish missing,
+     * null, booleans, strings, integers, and serialized composite values;
+     * length prefixes prevent adjacent values from colliding.
+     *
+     * When codegen supplies a key builder, it replaces the generic loop
+     * but must preserve those logical key semantics.
+     *
+     * @param array<string, mixed> $inputs
      */
     private function buildCacheKey(array $inputs): string
     {
-        // Codegen-supplied inline builder wins when present: it knows
-        // the register order and skips the reflective loop entirely.
-        // Same wire format either way (see the class docblock for the
-        // key layout the closure must produce).
         if ($this->keyBuilder !== null) {
             return ($this->keyBuilder)($inputs);
         }
 
         $key = '';
-        foreach ($this->inputNames as $name) {
+        foreach ($this->inputRegisterMap as $name => $_) {
             if (!\array_key_exists($name, $inputs)) {
                 $key .= self::KEY_MISSING;
                 continue;

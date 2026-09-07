@@ -10,42 +10,43 @@ use Smithy\Client\Endpoint\{
 };
 
 /**
- * Executes compiled endpoint bytecode against a set of input parameters
- * and returns a resolved {@see Endpoint}.
+ * Execute compiled endpoint bytecode against named input parameters.
  *
- * The class is instantiated once per client (usually held by a
- * {@see BytecodeEndpointResolver}) and reused across every request. Only
- * the register array is (re)initialized each call.
+ * An evaluator is normally created once by a
+ * {@see BytecodeEndpointResolver} and reused for every request. Each
+ * evaluation copies the precomputed default register file, validates
+ * supplied inputs, walks the binary decision diagram, and executes the
+ * selected result program to produce an {@see Endpoint}.
  *
- * # Extending with vendor-specific opcodes
- *
- * Vendors can pass an {@see OpcodeHandlerInterface} at construction
- * time. The interpreter delegates to that handler whenever the base
- * opcode set does not recognize an opcode.
+ * Vendor layers may supply an {@see OpcodeHandlerInterface}. The
+ * interpreter delegates opcodes outside the generic Smithy range to that
+ * handler without adding vendor-specific branches to this runtime.
  */
-final class Evaluator
+final readonly class Evaluator
 {
     /**
      * @param array<string, string> $endpointAuthSchemeIds Raw endpoint
      *     auth scheme names mapped to canonical Smithy shape IDs.
      */
     public function __construct(
-        private readonly Bytecode $bytecode,
-        private readonly ?OpcodeHandlerInterface $handler = null,
-        private readonly array $endpointAuthSchemeIds = []
+        private Bytecode $bytecode,
+        private ?OpcodeHandlerInterface $handler = null,
+        private array $endpointAuthSchemeIds = []
     ) {}
 
     /**
      * Resolve an endpoint from a parameter map.
      *
-     * @param array<string, mixed> $params Named parameter values. Keys
-     *                      match the ruleset's parameter names.
-     *                      Missing keys fall through to the parameter's
-     *                      declared default.
+     * Parameter names match the ruleset's modeled inputs. Missing and null
+     * values leave the register's modeled default intact. Supplied values
+     * are validated against required state and endpoint parameter types
+     * before the BDD is evaluated.
+     *
+     * @param array<string, mixed> $params Named endpoint parameter values.
      *
      * @throws RulesEvaluationException When the ruleset returns an error,
-     *                                  no result terminal is reached, or
-     *                                  a checked bytecode fault is detected.
+     *                                  reaches no result, or contains
+     *                                  invalid bytecode.
      */
     public function evaluate(array $params): Endpoint
     {
@@ -87,7 +88,10 @@ final class Evaluator
             // on each case.
             switch ($condType) {
                 case 0: // COND_FULL
-                    $v = $this->runBytecode($bytecode->conditionOffsets[$condIdx], $regs);
+                    $v = $this->runBytecode(
+                        $bytecode->conditionOffsets[$condIdx],
+                        $regs
+                    );
                     $result = $v !== null && $v !== false;
                     break;
                 case 1: // COND_ISSET
@@ -108,7 +112,8 @@ final class Evaluator
                     break;
                 default:
                     throw new RulesEvaluationException(
-                        "Unknown condition type {$condType} at condition {$condIdx}"
+                        "Unknown condition type {$condType} at condition "
+                            . $condIdx
                     );
             }
 
@@ -134,7 +139,10 @@ final class Evaluator
                 'No endpoint matched the supplied parameters'
             );
         }
-        $result = $this->runBytecode($bytecode->resultOffsets[$resultIdx], $regs);
+        $result = $this->runBytecode(
+            $bytecode->resultOffsets[$resultIdx],
+            $regs
+        );
 
         if ($result === null) {
             throw new RulesEvaluationException(
@@ -200,14 +208,15 @@ final class Evaluator
     }
 
     /**
-     * Execute bytecode starting at `$start`. Returns whatever value the
-     * program terminates with (an {@see Endpoint} for result programs,
-     * a scalar for condition programs).
+     * Execute a condition or result program from an instruction offset.
      *
-     * The dispatch loop is intentionally kept together so opcode behavior
-     * remains local and easy to audit.
+     * Condition programs return scalar values used by the BDD walker.
+     * Result programs return an {@see Endpoint}, an explicit rules error,
+     * or null for the implicit `NoMatchRule`. The dispatch loop remains in
+     * one method so stack, register, and program-counter behavior can be
+     * audited together.
      *
-     * @param array<int, mixed> $regs
+     * @param array<int, mixed> $regs Mutable evaluator register file.
      */
     private function runBytecode(int $start, array &$regs): mixed
     {
@@ -235,7 +244,8 @@ final class Evaluator
                     break;
 
                 case 1: // LOAD_CONST_W
-                    $stack[$sp++] = $constants[($code[$pc] << 8) | $code[$pc + 1]];
+                    $index = ($code[$pc] << 8) | $code[$pc + 1];
+                    $stack[$sp++] = $constants[$index];
                     $pc += 2;
                     break;
 
@@ -306,7 +316,7 @@ final class Evaluator
                     $b = $sp - 4;
                     $stack[$b] = [
                         $stack[$b + 1] => $stack[$b],
-                        $stack[$b + 3] => $stack[$b + 2],
+                        $stack[$b + 3] => $stack[$b + 2]
                     ];
                     $sp = $b + 1;
                     break;
@@ -316,7 +326,7 @@ final class Evaluator
                     $stack[$b] = [
                         $stack[$b + 1] => $stack[$b],
                         $stack[$b + 3] => $stack[$b + 2],
-                        $stack[$b + 5] => $stack[$b + 4],
+                        $stack[$b + 5] => $stack[$b + 4]
                     ];
                     $sp = $b + 1;
                     break;
@@ -327,7 +337,7 @@ final class Evaluator
                         $stack[$b + 1] => $stack[$b],
                         $stack[$b + 3] => $stack[$b + 2],
                         $stack[$b + 5] => $stack[$b + 4],
-                        $stack[$b + 7] => $stack[$b + 6],
+                        $stack[$b + 7] => $stack[$b + 6]
                     ];
                     $sp = $b + 1;
                     break;
@@ -373,7 +383,10 @@ final class Evaluator
 
                 case 21: // FN2
                     $fn = $functions[$code[$pc++]];
-                    $stack[$sp - 2] = $fn->apply2($stack[$sp - 2], $stack[$sp - 1]);
+                    $stack[$sp - 2] = $fn->apply2(
+                        $stack[$sp - 2],
+                        $stack[$sp - 1]
+                    );
                     $sp -= 1;
                     break;
 
@@ -404,26 +417,34 @@ final class Evaluator
                     $prop = $constants[($code[$pc] << 8) | $code[$pc + 1]];
                     $pc += 2;
                     $target = $stack[$sp - 1];
-                    $stack[$sp - 1] = \is_array($target) ? ($target[$prop] ?? null) : null;
+                    $stack[$sp - 1] = \is_array($target)
+                        ? ($target[$prop] ?? null)
+                        : null;
                     break;
 
                 case 25: // GET_INDEX
                     $i = $code[$pc++];
                     $target = $stack[$sp - 1];
-                    $stack[$sp - 1] = \is_array($target) ? ($target[$i] ?? null) : null;
+                    $stack[$sp - 1] = \is_array($target)
+                        ? ($target[$i] ?? null)
+                        : null;
                     break;
 
                 case 26: // GET_PROPERTY_REG
                     $target = $regs[$code[$pc++]];
                     $prop = $constants[($code[$pc] << 8) | $code[$pc + 1]];
                     $pc += 2;
-                    $stack[$sp++] = \is_array($target) ? ($target[$prop] ?? null) : null;
+                    $stack[$sp++] = \is_array($target)
+                        ? ($target[$prop] ?? null)
+                        : null;
                     break;
 
                 case 27: // GET_INDEX_REG
                     $target = $regs[$code[$pc++]];
                     $i = $code[$pc++];
-                    $stack[$sp++] = \is_array($target) ? ($target[$i] ?? null) : null;
+                    $stack[$sp++] = \is_array($target)
+                        ? ($target[$i] ?? null)
+                        : null;
                     break;
 
                 case 28: // IS_TRUE
@@ -476,9 +497,20 @@ final class Evaluator
                         $stack[$sp - 1] = null;
                         break;
                     }
+                    $reverse = ($flags & 0x01) !== 0;
                     $stack[$sp - 1] = ($flags & 0x02) !== 0
-                        ? self::substringAscii($s, $startPos, $endPos, ($flags & 0x01) !== 0)
-                        : self::substring($s, $startPos, $endPos, ($flags & 0x01) !== 0);
+                        ? self::substringAscii(
+                            $s,
+                            $startPos,
+                            $endPos,
+                            $reverse
+                        )
+                        : self::substring(
+                            $s,
+                            $startPos,
+                            $endPos,
+                            $reverse
+                        );
                     break;
 
                 case 35: // IS_VALID_HOST_LABEL
@@ -492,7 +524,9 @@ final class Evaluator
 
                 case 36: // PARSE_URL
                     $url = $stack[$sp - 1];
-                    $stack[$sp - 1] = \is_string($url) ? self::parseUrl($url) : null;
+                    $stack[$sp - 1] = \is_string($url)
+                        ? self::parseUrl($url)
+                        : null;
                     break;
 
                 case 37: // URI_ENCODE
@@ -625,7 +659,8 @@ final class Evaluator
                     $constIdx = ($code[$pc] << 8) | $code[$pc + 1];
                     $pc += 2;
                     $v = $regs[$regIdx];
-                    $stack[$sp++] = \is_string($v) && $v === $constants[$constIdx];
+                    $stack[$sp++] = \is_string($v)
+                        && $v === $constants[$constIdx];
                     break;
 
                 case 52: // SET_REG_RETURN
@@ -638,7 +673,8 @@ final class Evaluator
                     $pc += 2;
                     $host = $stack[$sp - 2];
                     $path = $stack[$sp - 1];
-                    $stack[$sp - 2] = $constants[$schemeIdx] . '://' . $host . $path;
+                    $stack[$sp - 2] = $constants[$schemeIdx]
+                        . '://' . $host . $path;
                     $sp -= 1;
                     break;
 
@@ -672,7 +708,7 @@ final class Evaluator
 
                 default:
                     // Vendor-extension seam. `$handler` is a composed
-                    // OpcodeHandlerInterface (null in the common smithy-only case).
+                    // OpcodeHandlerInterface.
                     // When null, the interpreter faults. When set, the
                     // handler advances `$pc` / `$sp` / `$stack` in place -
                     // no tuple-return allocation per dispatch.
@@ -681,7 +717,15 @@ final class Evaluator
                             "Unknown opcode {$op} at pc " . ($pc - 1)
                         );
                     }
-                    $this->handler->handle($op, $code, $pc, $stack, $sp, $regs, $constants);
+                    $this->handler->handle(
+                        $op,
+                        $code,
+                        $pc,
+                        $stack,
+                        $sp,
+                        $regs,
+                        $constants
+                    );
                     break;
             }
         }
@@ -723,7 +767,12 @@ final class Evaluator
      * `substring`'s hot cost. Bounds check still runs - the spec
      * requires null on `$end > len`.
      */
-    private static function substringAscii(string $s, int $start, int $end, bool $reverse): ?string
+    private static function substringAscii(
+        string $s,
+        int $start,
+        int $end,
+        bool $reverse
+    ): ?string
     {
         $len = \strlen($s);
         if ($start >= $end || $end > $len) {
@@ -852,7 +901,7 @@ final class Evaluator
             'authority' => $authority,
             'path' => $path,
             'normalizedPath' => $normalized,
-            'isIp' => $isIp,
+            'isIp' => $isIp
         ];
     }
 
@@ -884,8 +933,11 @@ final class Evaluator
         if (\is_array($url)
             && isset($url['scheme'], $url['authority'])
         ) {
-            return $url['scheme'] . '://' . $url['authority'] . ($url['path'] ?? '');
+            return $url['scheme']
+                . '://' . $url['authority']
+                . ($url['path'] ?? '');
         }
+
         return (string) $url;
     }
 

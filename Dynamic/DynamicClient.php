@@ -1,0 +1,386 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Smithy\Client\Dynamic;
+
+use Smithy\Client\{
+    AbstractClient,
+    ClientConfig,
+    RequestOverrideConfig
+};
+use Smithy\Client\Auth\{
+    AuthSchemeInterface,
+    AuthSchemeResolverInterface
+};
+use Smithy\Client\Endpoint\{
+    Bytecode\RulesFunctionInterface,
+    Bytecode\StdFunctions,
+    EndpointResolverInterface
+};
+use Smithy\Client\Interceptor\InterceptorChain;
+use Smithy\Client\Plugin\{
+    HttpChecksumPlugin,
+    PluginCollection,
+    RequestCompressionPlugin
+};
+use Smithy\Client\Retry\RetryStrategyInterface;
+use Smithy\Core\Model\SmithyModel;
+use Smithy\Core\Serde\{
+    SchemaConverter,
+    SchemaTraitRegistry
+};
+use Smithy\Core\Shape\Document\{
+    DocumentInterface,
+    StructDocument
+};
+use Smithy\Http\Client\HttpClientInterface;
+use Smithy\Http\Client\CurlClient;
+use Smithy\Protocol\{
+    ProtocolInterface,
+    RpcV2\RpcV2CborProtocol
+};
+
+/**
+ * Execute a runtime-loaded Smithy service without generated types.
+ */
+class DynamicClient extends AbstractClient
+{
+    private readonly SchemaConverter $converter;
+    private readonly DynamicService $service;
+    private readonly DocumentFactory $documentFactory;
+
+    /**
+     * Create a dynamic client with explicit runtime dependencies.
+     *
+     * @param array<string, string> $errorDiscriminatorTraits
+     */
+    public function __construct(
+        SmithyModel $model,
+        ClientConfig $config,
+        ?string $serviceId = null,
+        ?string $protocolId = null,
+        PluginCollection $plugins = new PluginCollection(),
+        ?SchemaTraitRegistry $traitRegistry = null,
+        array $errorDiscriminatorTraits = []
+    )
+    {
+        $this->documentFactory = new DocumentFactory();
+        $this->converter = new SchemaConverter(
+            $model,
+            $traitRegistry ?? new SchemaTraitRegistry(),
+            $errorDiscriminatorTraits
+        );
+        $this->service = new DynamicService(
+            $model,
+            $this->converter,
+            $serviceId,
+            $protocolId,
+            $errorDiscriminatorTraits
+        );
+
+        $plugins = $plugins
+            ->add(new RequestCompressionPlugin())
+            ->add(new HttpChecksumPlugin());
+
+        parent::__construct($config, $plugins);
+    }
+
+    /**
+     * Create a dynamic client from a runtime model or JSON AST path.
+     *
+     * @param SmithyModel|string $model Runtime model or JSON AST path.
+     * @param array<string, ProtocolInterface> $protocols
+     * @param list<string> $protocolPreference
+     * @param list<AuthSchemeInterface> $supportedAuthSchemes
+     * @param list<string>|null $authSchemePreference
+     * @param array<string, RulesFunctionInterface> $endpointFunctions
+     * @param array<string, string> $endpointAuthSchemeIds
+     * @param array<string, mixed> $endpointParameters
+     * @param array<string, mixed> $context
+     */
+    public static function create(
+        SmithyModel|string $model,
+        ?string $serviceId = null,
+        ?string $protocolId = null,
+        ?ProtocolInterface $protocol = null,
+        array $protocols = [],
+        ?HttpClientInterface $httpClient = null,
+        ?EndpointResolverInterface $endpointResolver = null,
+        ?string $endpoint = null,
+        array $endpointFunctions = [],
+        array $endpointAuthSchemeIds = [],
+        array $endpointParameters = [],
+        array $protocolPreference = [],
+        InterceptorChain $interceptors = new InterceptorChain(),
+        array $supportedAuthSchemes = [],
+        ?AuthSchemeResolverInterface $authSchemeResolver = null,
+        ?array $authSchemePreference = null,
+        ?RetryStrategyInterface $retryStrategy = null,
+        string $retryScope = '',
+        array $context = [],
+        PluginCollection $plugins = new PluginCollection()
+    ): static
+    {
+        return DynamicClientFactory::create(
+            model: $model,
+            runtime: static::getDefaultRuntime(),
+            serviceId: $serviceId,
+            protocolId: $protocolId,
+            protocol: $protocol,
+            protocols: $protocols,
+            httpClient: $httpClient,
+            endpointResolver: $endpointResolver,
+            endpoint: $endpoint,
+            endpointFunctions: $endpointFunctions,
+            endpointAuthSchemeIds: $endpointAuthSchemeIds,
+            endpointParameters: $endpointParameters,
+            protocolPreference: $protocolPreference,
+            interceptors: $interceptors,
+            supportedAuthSchemes: $supportedAuthSchemes,
+            authSchemeResolver: $authSchemeResolver,
+            authSchemePreference: $authSchemePreference,
+            retryStrategy: $retryStrategy,
+            retryScope: $retryScope,
+            context: $context,
+            plugins: $plugins,
+            clientClass: static::class
+        );
+    }
+
+    /**
+     * Build the resolved client configuration.
+     *
+     * Dynamic client subclasses may override this to supply a specialized
+     * configuration while retaining the shared client factory.
+     *
+     * @param list<AuthSchemeInterface> $supportedAuthSchemes
+     * @param list<string>|null $authSchemePreference
+     * @param array<string, mixed> $context
+     *
+     * @internal Called by {@see DynamicClientFactory}.
+     */
+    public static function createClientConfig(
+        SmithyModel $model,
+        string $serviceId,
+        ?string $protocolId,
+        ProtocolInterface $protocol,
+        ?HttpClientInterface $httpClient,
+        EndpointResolverInterface $endpointResolver,
+        InterceptorChain $interceptors,
+        array $supportedAuthSchemes,
+        ?AuthSchemeResolverInterface $authSchemeResolver,
+        ?array $authSchemePreference,
+        ?RetryStrategyInterface $retryStrategy,
+        string $retryScope,
+        array $context
+    ): ClientConfig
+    {
+        return new ClientConfig(
+            protocol: $protocol,
+            httpClient: $httpClient ?? new CurlClient(),
+            endpointResolver: $endpointResolver,
+            interceptors: $interceptors,
+            supportedAuthSchemes: $supportedAuthSchemes,
+            authSchemeResolver: $authSchemeResolver,
+            authSchemePreference: $authSchemePreference ?? [],
+            retryStrategy: $retryStrategy,
+            retryScope: $retryScope,
+            context: $context
+        );
+    }
+
+    /**
+     * Execute a modeled operation by name.
+     *
+     * @param array<string, mixed>|DocumentInterface|null $input
+     * @param array<string, mixed> $overrides
+     *
+     * @throws \InvalidArgumentException When operation or overrides are invalid.
+     * @throws \Smithy\Core\Shape\Exception\InvalidShapeValueException When input is invalid.
+     * @throws \LogicException When the operation uses unsupported streaming or
+     *                         returns an invalid output.
+     */
+    public function call(
+        string $operationName,
+        array|DocumentInterface|null $input = null,
+        array $overrides = []
+    ): StructDocument
+    {
+        $operation = $this->expectOperation($operationName);
+        $this->assertPreviewSupported($operation);
+        $inputOverrides = [];
+        if (\is_array($input)) {
+            foreach ($input as $name => $value) {
+                if (\is_string($name)
+                    && \str_starts_with($name, '@')
+                ) {
+                    $inputOverrides[$name] = $value;
+                    unset($input[$name]);
+                }
+            }
+        }
+        if ($inputOverrides !== []) {
+            $overrides = $overrides === []
+                ? $inputOverrides
+                : [...$inputOverrides, ...$overrides];
+        }
+
+        $modeledInput = $operation->createInputFromValue($input);
+        $output = $this->executeOperation(
+            $operation,
+            $modeledInput,
+            $overrides === []
+                ? null
+                : RequestOverrideConfig::fromArray($overrides)
+        );
+        if ($output->getSchema()->id !== $operation->getOutputSchema()->id) {
+            throw new \LogicException(
+                "Operation {$operation->getId()} returned "
+                . "unexpected shape {$output->getSchema()->id}."
+            );
+        }
+
+        return $output instanceof StructDocument
+            ? $output
+            : StructDocument::fromStruct(
+                $output,
+                $operation->getOutputSchema()
+            );
+    }
+
+    /**
+     * Invoke a modeled operation using its method name.
+     *
+     * @param array<int|string, mixed> $arguments
+     */
+    public function __call(
+        string $name,
+        array $arguments
+    ): StructDocument
+    {
+        if (\count($arguments) > 1) {
+            throw new \BadMethodCallException(
+                "Dynamic operation {$name} accepts at most one input."
+            );
+        }
+
+        if ($arguments === []) {
+            $input = null;
+        } elseif (\array_key_exists(0, $arguments)) {
+            $input = $arguments[0];
+        } elseif (\array_key_exists('input', $arguments)) {
+            $input = $arguments['input'];
+        } elseif (\array_key_exists('args', $arguments)) {
+            $input = $arguments['args'];
+        } else {
+            $argument = (string) \array_key_first($arguments);
+            throw new \BadMethodCallException(
+                "Unknown dynamic operation argument '{$argument}'."
+            );
+        }
+
+        return $this->call($name, $input);
+    }
+
+    /**
+     * Return the resolved dynamic service.
+     */
+    public function getService(): DynamicService
+    {
+        return $this->service;
+    }
+
+    /**
+     * Resolve an operation by modeled name.
+     */
+    public function getOperation(string $name): ?DynamicOperation
+    {
+        $operation = $this->service->getOperation($name);
+
+        return $operation instanceof DynamicOperation ? $operation : null;
+    }
+
+    /**
+     * Return runtime implementations registered by this client class.
+     */
+    protected static function getDefaultRuntime(): DynamicClientRuntime
+    {
+        return new DynamicClientRuntime(
+            protocols: [
+                RpcV2CborProtocol::ID => new RpcV2CborProtocol()
+            ],
+            endpointFunctions: StdFunctions::all()
+        );
+    }
+
+    /**
+     * Create a schema-backed structure from a modeled shape ID.
+     *
+     * @throws \InvalidArgumentException When the shape ID is invalid.
+     * @throws \Smithy\Core\Shape\Exception\InvalidShapeValueException When the value is invalid.
+     */
+    public function createStruct(
+        string $shapeId,
+        mixed $value
+    ): StructDocument
+    {
+        return $this->documentFactory->createStruct(
+            $this->converter->getSchema($shapeId),
+            $value
+        );
+    }
+
+    /**
+     * Require a modeled operation by name.
+     */
+    private function expectOperation(string $name): DynamicOperation
+    {
+        $operation = $this->getOperation($name);
+        if ($operation === null && $name !== '') {
+            $operation = $this->getOperation(\ucfirst($name));
+        }
+        if ($operation === null) {
+            throw new \InvalidArgumentException(
+                "Operation '{$name}' not found in service "
+                . "'{$this->service->getId()}'."
+            );
+        }
+
+        return $operation;
+    }
+
+    /**
+     * Reject dynamic operation features excluded from the preview.
+     *
+     * @return void
+     * @throws \LogicException When the operation has a streaming member.
+     */
+    private function assertPreviewSupported(
+        DynamicOperation $operation
+    ): void
+    {
+        $unsupported = [];
+        $inputStream = $operation->getInputStreamMember();
+        if ($inputStream !== null) {
+            $unsupported[] = "input streaming member "
+                . "'{$inputStream->memberName}'";
+        }
+        $outputStream = $operation->getOutputStreamMember();
+        if ($outputStream !== null) {
+            $unsupported[] = "output streaming member "
+                . "'{$outputStream->memberName}'";
+        }
+        if ($unsupported === []) {
+            return;
+        }
+
+        throw new \LogicException(
+            "Dynamic operation {$operation->getId()} is outside the "
+            . 'preview scope because it has '
+            . \implode(' and ', $unsupported)
+            . '. Dynamic streaming blobs and event streams are not '
+            . 'supported.'
+        );
+    }
+}

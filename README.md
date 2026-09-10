@@ -81,8 +81,9 @@ $output = $client->call('GetForecast', [
 ]);
 ```
 
-Provider packages register their protocols, authentication schemes, endpoint
-functions, and schema traits through `DynamicClientRuntime`.
+Provider subclasses register protocols, authentication schemes, endpoint
+functions, and schema traits through an internal `DynamicClientRuntime`
+returned by their protected runtime hook.
 
 ## Dependencies
 

@@ -5,14 +5,17 @@ declare(strict_types=1);
 namespace Smithy\Client\Interceptor;
 
 use Smithy\Client\ClientConfig;
+use Smithy\Client\ClientInterface;
 use Smithy\Core\Serde\SerializableStructInterface;
 use Smithy\Core\Shape\OperationInterface;
 
 /**
  * Hook data available before the input has been serialized.
  *
- * Supplied to `readBeforeExecution`, `modifyBeforeSerialization`, and
- * `readBeforeSerialization`.
+ * Supplied to `interceptCall`, `readBeforeExecution`,
+ * `modifyBeforeSerialization`, and `readBeforeSerialization`. The `client`
+ * property is populated for `interceptCall` so wrappers can re-enter the
+ * client when needed.
  */
 final class InputContext
 {
@@ -22,7 +25,8 @@ final class InputContext
     public function __construct(
         public OperationInterface $operation,
         public SerializableStructInterface $input,
-        public ClientConfig $config
+        public ClientConfig $config,
+        public ?ClientInterface $client = null
     ) {}
 
     /**
@@ -46,7 +50,8 @@ final class InputContext
             : new self(
                 $this->operation,
                 $input,
-                $this->config
+                $this->config,
+                $this->client
             );
     }
 }

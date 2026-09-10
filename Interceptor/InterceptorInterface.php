@@ -12,8 +12,11 @@ use Smithy\Core\Serde\SerializableStructInterface;
  * A hook contract for the client execution pipeline.
  *
  * The pipeline calls each hook at fixed points in the request/response
- * lifecycle. Hooks come in two flavours:
+ * lifecycle. Hooks take three forms:
  *
+ *  - **Call wrappers** (`interceptCall`) enclose the entire pipeline and may
+ *    delegate through `$next`, substitute the input, or short-circuit the
+ *    call.
  *  - **Read hooks** (`readBefore*`, `readAfter*`) observe in-flight data
  *    without changing it. Most read hooks stop the current stage when they
  *    throw. The execution-boundary and attempt-boundary read hooks invoke
@@ -32,6 +35,30 @@ use Smithy\Core\Serde\SerializableStructInterface;
  */
 interface InterceptorInterface
 {
+    /**
+     * Report whether this interceptor wraps calls through
+     * {@see interceptCall}.
+     *
+     * The chain only folds interceptors that opt in, so ordinary
+     * interceptors do not enter the call-wrapper path.
+     */
+    public function interceptCalls(): bool;
+
+    /**
+     * Wrap an entire call outside the retry loop.
+     *
+     * Wrappers compose by nesting. The first registered interceptor is the
+     * outermost wrapper. Implementations may delegate, substitute the input,
+     * short-circuit, hedge, time, or otherwise control the call. The current
+     * client is available through `InputContext::$client` for re-entry.
+     *
+     * @param callable(InputContext): SerializableStructInterface $next
+     */
+    public function interceptCall(
+        InputContext $ctx,
+        callable $next
+    ): SerializableStructInterface;
+
     // Execution-level hooks run once per call.
 
     /**

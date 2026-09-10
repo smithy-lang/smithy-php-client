@@ -35,6 +35,21 @@ use Smithy\Core\Serde\SerializableStructInterface;
 abstract class AbstractInterceptor implements InterceptorInterface
 {
     /** @inheritDoc */
+    public function interceptCalls(): bool
+    {
+        return false;
+    }
+
+    /** @inheritDoc */
+    public function interceptCall(
+        InputContext $ctx,
+        callable $next
+    ): SerializableStructInterface
+    {
+        return $next($ctx);
+    }
+
+    /** @inheritDoc */
     public function readBeforeExecution(InputContext $ctx): void
     {
     }

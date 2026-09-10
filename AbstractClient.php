@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Smithy\Client;
 
+use Smithy\Client\Interceptor\InputContext;
+use Smithy\Client\Pagination\PaginatedRequestInterface;
+use Smithy\Client\Pagination\Paginator;
 use Smithy\Client\Plugin\{
     IdempotencyTokenPlugin,
     PluginCollection
 };
-use Smithy\Client\Pagination\PaginatedRequestInterface;
-use Smithy\Client\Pagination\Paginator;
 use Smithy\Client\Waiter\Acceptor;
 use Smithy\Client\Waiter\Waiter;
 use Smithy\Client\Waiter\WaiterConfig;
@@ -83,7 +84,27 @@ abstract class AbstractClient implements ClientInterface
         ?RequestOverrideConfig $overrides = null
     ): SerializableStructInterface
     {
-        return $this->pipeline->execute($operation, $input, $overrides);
+        $interceptor = $this->config->interceptorChain;
+        if (!$interceptor->interceptCalls()) {
+            return $this->pipeline->execute($operation, $input, $overrides);
+        }
+
+        $ctx = new InputContext(
+            $operation,
+            $input,
+            $this->config,
+            $this
+        );
+
+        return $interceptor->interceptCall(
+            $ctx,
+            fn(InputContext $ctx): SerializableStructInterface =>
+                $this->pipeline->execute(
+                    $operation,
+                    $ctx->input,
+                    $overrides
+                )
+        );
     }
 
     /**

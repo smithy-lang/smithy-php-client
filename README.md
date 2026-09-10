@@ -34,7 +34,7 @@ final class WeatherClient extends AbstractClient
 `ClientPipeline` resolves an endpoint, serializes the request, selects an
 authentication scheme, transmits through the configured HTTP client, applies
 retry decisions, and deserializes the response. Interceptors run at the
-documented pipeline stages.
+[documented pipeline stages](Interceptor/README.md#lifecycle).
 
 ## Configuration
 
@@ -56,7 +56,7 @@ with one dependency replaced.
 |---|---|
 | `Smithy\Client\Auth` | Authentication selection, identities, and signers |
 | `Smithy\Client\Endpoint` | Static and bytecode endpoint resolution |
-| `Smithy\Client\Interceptor` | Request pipeline hooks and contexts |
+| [`Smithy\Client\Interceptor`](Interceptor/README.md) | Request pipeline hooks and contexts |
 | `Smithy\Client\Pagination` | Schema-driven paginators |
 | `Smithy\Client\Plugin` | Reusable client configuration changes |
 | `Smithy\Client\Retry` | Retry strategies and request flags |

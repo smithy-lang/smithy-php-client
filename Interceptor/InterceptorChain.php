@@ -21,10 +21,24 @@ final readonly class InterceptorChain implements InterceptorInterface
     /** @var list<InterceptorInterface> */
     private array $interceptors;
 
+    /** @var list<InterceptorInterface> */
+    private array $callInterceptors;
+
+    private bool $interceptsCalls;
+
     /** @param InterceptorInterface ...$interceptors Interceptors in execution order. */
     public function __construct(InterceptorInterface ...$interceptors)
     {
         $this->interceptors = $interceptors;
+        $callInterceptors = [];
+        foreach ($interceptors as $interceptor) {
+            if ($interceptor->interceptCalls()) {
+                $callInterceptors[] = $interceptor;
+            }
+        }
+
+        $this->callInterceptors = $callInterceptors;
+        $this->interceptsCalls = $callInterceptors !== [];
     }
 
     /**
@@ -65,6 +79,43 @@ final readonly class InterceptorChain implements InterceptorInterface
     public function isEmpty(): bool
     {
         return $this->interceptors === [];
+    }
+
+    /** @inheritDoc */
+    public function interceptCalls(): bool
+    {
+        return $this->interceptsCalls;
+    }
+
+    /** @inheritDoc */
+    public function interceptCall(
+        InputContext $ctx,
+        callable $next
+    ): SerializableStructInterface
+    {
+        return $this->invokeCall(0, $ctx, $next);
+    }
+
+    /**
+     * Invoke one call wrapper and provide the remainder as its continuation.
+     *
+     * @param callable(InputContext): SerializableStructInterface $next
+     */
+    private function invokeCall(
+        int $index,
+        InputContext $ctx,
+        callable $next
+    ): SerializableStructInterface
+    {
+        if (!isset($this->callInterceptors[$index])) {
+            return $next($ctx);
+        }
+
+        return $this->callInterceptors[$index]->interceptCall(
+            $ctx,
+            fn(InputContext $nextCtx): SerializableStructInterface =>
+                $this->invokeCall($index + 1, $nextCtx, $next)
+        );
     }
 
     /** @inheritDoc */

@@ -6,6 +6,7 @@ namespace Smithy\Client\Interceptor;
 
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Smithy\Client\ClientConfig;
 use Smithy\Core\Serde\SerializableStructInterface;
 
 /**
@@ -79,6 +80,19 @@ final readonly class InterceptorChain implements InterceptorInterface
     public function isEmpty(): bool
     {
         return $this->interceptors === [];
+    }
+
+    /** @inheritDoc */
+    public function modifyBeforeCall(CallContext $ctx): ClientConfig
+    {
+        $config = $ctx->config;
+        foreach ($this->interceptors as $interceptor) {
+            $config = $interceptor->modifyBeforeCall(
+                $ctx->withConfig($config)
+            );
+        }
+
+        return $config;
     }
 
     /** @inheritDoc */

@@ -79,9 +79,10 @@ class DynamicClient extends AbstractClient
             $errorDiscriminatorTraits
         );
 
-        $plugins = $plugins
-            ->add(new RequestCompressionPlugin())
-            ->add(new HttpChecksumPlugin());
+        $plugins = $plugins->merge(new PluginCollection(
+            new RequestCompressionPlugin(),
+            new HttpChecksumPlugin()
+        ));
 
         parent::__construct($config, $plugins);
     }

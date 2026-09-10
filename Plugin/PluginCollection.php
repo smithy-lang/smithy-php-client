@@ -7,7 +7,7 @@ namespace Smithy\Client\Plugin;
 use Smithy\Client\ClientConfig;
 
 /**
- * Apply an ordered collection of client plugins.
+ * Store client plugins in registration order.
  *
  * The first instance of each concrete plugin class wins. Additions return a
  * new collection, leaving the original unchanged.
@@ -60,15 +60,44 @@ final readonly class PluginCollection
     }
 
     /**
-     * Apply each plugin in collection order.
+     * Append plugins whose concrete classes are not already registered.
+     */
+    public function merge(self $plugins): self
+    {
+        $merged = $this;
+        foreach ($plugins->plugins as $plugin) {
+            $merged = $merged->add($plugin);
+        }
+
+        return $merged;
+    }
+
+    /**
+     * Return whether the collection contains no plugins.
+     */
+    public function isEmpty(): bool
+    {
+        return $this->plugins === [];
+    }
+
+    /**
+     * Return plugins in registration order.
+     *
+     * @return list<PluginInterface>
+     */
+    public function getPlugins(): array
+    {
+        return $this->plugins;
+    }
+
+    /**
+     * Resolve and apply this collection to a client configuration.
      */
     public function apply(ClientConfig $config): ClientConfig
     {
-        foreach ($this->plugins as $plugin) {
-            $config = $plugin->configure($config);
-        }
-
-        return $config;
+        return (new PluginResolver())
+            ->resolve($this, $config->getPluginState())
+            ->apply($config);
     }
 
     private function contains(PluginInterface $plugin): bool

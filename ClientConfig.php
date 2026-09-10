@@ -11,6 +11,13 @@ use Smithy\Client\Auth\NoAuthScheme;
 use Smithy\Client\Endpoint\EndpointResolverInterface;
 use Smithy\Client\Interceptor\InterceptorChain;
 use Smithy\Client\Interceptor\InterceptorInterface;
+use Smithy\Client\Plugin\{
+    AutoPlugin,
+    PluginCollection,
+    PluginInterface,
+    PluginResolver,
+    PluginState
+};
 use Smithy\Client\Retry\NoRetryStrategy;
 use Smithy\Client\Retry\RetryStrategyInterface;
 use Smithy\Http\Client\HttpClientInterface;
@@ -28,6 +35,8 @@ use Smithy\Protocol\ProtocolInterface;
  */
 class ClientConfig
 {
+    private readonly PluginState $pluginState;
+
     public readonly InterceptorChain $interceptorChain;
 
     /** @var list<AuthSchemeInterface> */
@@ -69,6 +78,7 @@ class ClientConfig
      *               executions.
      * @param array<string, mixed> $context Extension bag for
      *                      interceptor state or forward-compatible fields.
+     * @param PluginState|null $pluginState Internal plugin application state.
      */
     public function __construct(
         public readonly ProtocolInterface $protocol,
@@ -80,7 +90,8 @@ class ClientConfig
         ?RetryStrategyInterface $retryStrategy = null,
         string $retryScope = '',
         array $context = [],
-        array $authSchemePreference = []
+        array $authSchemePreference = [],
+        ?PluginState $pluginState = null
     )
     {
         $this->interceptorChain = $interceptors;
@@ -111,6 +122,114 @@ class ClientConfig
         $this->retryStrategy = $retryStrategy ?? NoRetryStrategy::instance();
         $this->retryScope = $retryScope;
         $this->context = $context;
+        $this->pluginState = $pluginState ?? PluginState::defaults();
+    }
+
+    /**
+     * Register and apply a plugin.
+     */
+    public function withPlugin(PluginInterface $plugin): static
+    {
+        return $this->withPlugins($plugin);
+    }
+
+    /**
+     * Register and apply plugins.
+     */
+    public function withPlugins(PluginInterface ...$plugins): static
+    {
+        return $this->withPluginCollection(
+            new PluginCollection(...$plugins)
+        );
+    }
+
+    /**
+     * Register and apply a collection of plugins.
+     */
+    public function withPluginCollection(
+        PluginCollection $plugins
+    ): static {
+        if ($plugins->isEmpty()
+            && $this->pluginState->plugins->isEmpty()
+        ) {
+            return $this;
+        }
+
+        /** @var static */
+        return (new PluginResolver())
+            ->resolve($plugins, $this->pluginState)
+            ->apply($this);
+    }
+
+    /**
+     * Replace the predicate used to select plugins.
+     *
+     * Previously applied plugins remain applied. Registered plugins that were
+     * previously rejected are reconsidered.
+     *
+     * @param callable(PluginInterface): bool $predicate
+     */
+    public function withPluginPredicate(callable $predicate): static
+    {
+        return $this->resolveWithPluginPredicate(
+            self::toClosure($predicate)
+        );
+    }
+
+    /**
+     * Combine a predicate with the currently configured predicate.
+     *
+     * @param callable(PluginInterface): bool $predicate
+     */
+    public function withAddedPluginPredicate(callable $predicate): static
+    {
+        $added = self::toClosure($predicate);
+        $existing = $this->pluginState->predicate;
+
+        return $this->resolveWithPluginPredicate(
+            $existing === null
+                ? $added
+                : static fn(PluginInterface $plugin): bool =>
+                    $existing($plugin) && $added($plugin)
+        );
+    }
+
+    /**
+     * Disable Composer-registered automatic plugins.
+     *
+     * Automatic plugins already applied to this configuration are not
+     * removed.
+     */
+    public function withoutAutoPlugins(): static
+    {
+        return $this->withAddedPluginPredicate(
+            static fn(PluginInterface $plugin): bool =>
+                $plugin !== AutoPlugin::instance()
+        );
+    }
+
+    /**
+     * Return internal plugin application state.
+     *
+     * @internal
+     */
+    public function getPluginState(): PluginState
+    {
+        return $this->pluginState;
+    }
+
+    /**
+     * Return a config carrying resolved plugin state.
+     *
+     * @internal
+     */
+    public function withResolvedPluginState(PluginState $state): static
+    {
+        if ($state === $this->pluginState) {
+            return $this;
+        }
+
+        return $this->copyWith(['pluginState' => $state]);
     }
 
     /**
@@ -287,6 +406,7 @@ class ClientConfig
             $overrides['retryStrategy'] ?? $this->retryStrategy;
         $retryScope = $overrides['retryScope'] ?? $this->retryScope;
         $context = $overrides['context'] ?? $this->context;
+        $pluginState = $overrides['pluginState'] ?? $this->pluginState;
 
         return new static(
             protocol: $protocol,
@@ -299,8 +419,28 @@ class ClientConfig
             retryScope: $retryScope,
             context: $context,
             authSchemePreference: $overrides['authSchemePreference']
-                ?? $this->authSchemePreference
+                ?? $this->authSchemePreference,
+            pluginState: $pluginState
         );
+    }
+
+    private function resolveWithPluginPredicate(
+        \Closure $predicate
+    ): static {
+        $state = $this->pluginState->withPredicate($predicate);
+        $config = $this->withResolvedPluginState($state);
+
+        /** @var static */
+        return (new PluginResolver())
+            ->resolve(new PluginCollection(), $state)
+            ->apply($config);
+    }
+
+    private static function toClosure(callable $callable): \Closure
+    {
+        return $callable instanceof \Closure
+            ? $callable
+            : \Closure::fromCallable($callable);
     }
 
     /**

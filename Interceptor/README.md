@@ -28,9 +28,9 @@ Reusable client features should register their interceptors through a plugin:
 
 ```php
 use Smithy\Client\ClientConfig;
-use Smithy\Client\Plugin\PluginInterface;
+use Smithy\Client\Plugin\AbstractPlugin;
 
-final class CorrelationIdPlugin implements PluginInterface
+final class CorrelationIdPlugin extends AbstractPlugin
 {
     public function configure(ClientConfig $config): ClientConfig
     {
@@ -98,6 +98,43 @@ final class StatusLogger extends AbstractInterceptor
     }
 }
 ```
+
+## Modifying Call Configuration
+
+`modifyBeforeCall()` can replace client configuration for one operation
+without changing the configuration stored by the client. Hooks run in
+interceptor registration order, and each returned configuration is passed to
+the next hook.
+
+This example switches the protocol for the current call:
+
+```php
+use Smithy\Client\ClientConfig;
+use Smithy\Client\Interceptor\AbstractInterceptor;
+use Smithy\Client\Interceptor\CallContext;
+use Smithy\Protocol\ProtocolInterface;
+
+final class ProtocolOverrideInterceptor extends AbstractInterceptor
+{
+    public function __construct(
+        private readonly ProtocolInterface $protocol
+    ) {}
+
+    public function modifyBeforeCall(CallContext $ctx): ClientConfig
+    {
+        return $ctx->config->withProtocol($this->protocol);
+    }
+}
+```
+
+The returned configuration determines the protocol, transport, endpoint,
+retry, authentication, interceptor, and wrapper behavior for the call.
+Interceptors added by `modifyBeforeCall()` participate in call wrapping and
+pipeline execution, but do not receive `modifyBeforeCall()` during that same
+call.
+
+Call-scoped plugins run before `modifyBeforeCall()`. The interceptors present
+after those plugins are applied participate in this hook.
 
 ## Wrapping a Call
 
@@ -179,7 +216,8 @@ pipeline stages.
 
 | Scope | Hooks | Context | Frequency |
 |---|---|---|---|
-| Call | `interceptCall` | `InputContext` | Once per wrapper entry |
+| Call configuration | `modifyBeforeCall` | `CallContext` | Once per registered interceptor |
+| Call wrapping | `interceptCall` | `InputContext` | Once per wrapper entry |
 | Execution input | `readBeforeExecution`, `modifyBeforeSerialization`, `readBeforeSerialization` | `InputContext` | At most once per pipeline execution |
 | Serialized request | `readAfterSerialization`, `modifyBeforeRetryLoop` | `RequestContext` | At most once per pipeline execution |
 | Attempt request | `readBeforeAttempt`, `modifyBeforeSigning`, `readBeforeSigning`, `readAfterSigning`, `modifyBeforeTransmit`, `readBeforeTransmit` | `RequestContext` | At most once per attempt |
@@ -196,13 +234,15 @@ attempt.
 
 | Context | Available values |
 |---|---|
+| `CallContext` | Operation, input, and call configuration |
 | `InputContext` | Operation, input, client configuration, and current client for call wrappers |
 | `RequestContext` | Operation, input, configuration, and request |
 | `ResponseContext` | Operation, input, configuration, request, and response |
 | `OutputContext` | Operation, input, configuration, nullable request, nullable response, and nullable output |
 
-Call wrappers use `withInput()` to continue with a replacement input. Modify
-hooks return their replacement value. The chain passes that value to later
+Call-configuration hooks return a `ClientConfig`. Call wrappers use
+`withInput()` to continue with a replacement input. Other modify hooks return
+their replacement value. The chain passes each returned value to later
 interceptors.
 
 ## Errors and Completion

@@ -10,7 +10,7 @@ use Smithy\Client\Interceptor\IdempotencyTokenInterceptor;
 /**
  * Register idempotency-token autofill for modeled request inputs.
  */
-final class IdempotencyTokenPlugin implements PluginInterface
+final class IdempotencyTokenPlugin extends AbstractPlugin
 {
     public const CONFIG_IDEMPOTENCY_TOKEN_PROVIDER = 'IdempotencyTokenProvider';
 

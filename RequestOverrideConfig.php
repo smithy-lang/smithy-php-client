@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Smithy\Client;
 
+use Smithy\Client\Plugin\{
+    PluginCollection,
+    PluginInterface
+};
 use Smithy\Http\Client\{
     HttpRequestOptions,
     RequestTrailers
@@ -18,6 +22,7 @@ final readonly class RequestOverrideConfig
     public const HTTP = '@http';
     public const RETRIES = '@retries';
     public const AUTH = '@auth';
+    public const PLUGINS = '@plugins';
 
     /** @var array<string, mixed> */
     private array $httpOverrides;
@@ -30,13 +35,15 @@ final readonly class RequestOverrideConfig
      * @param HttpRequestOptions|null $httpOptions Complete HTTP options.
      * @param int|null $maxAttempts Maximum attempts for this request.
      * @param list<string>|null $authSchemePreference Auth scheme preference.
+     * @param PluginCollection $plugins Plugins applied only to this call.
      */
     private function __construct(
         array $httpOverrides,
         array $headers,
         public ?HttpRequestOptions $httpOptions,
         public ?int $maxAttempts,
-        public ?array $authSchemePreference
+        public ?array $authSchemePreference,
+        public PluginCollection $plugins = new PluginCollection()
     )
     {
         $this->httpOverrides = $httpOverrides;
@@ -56,6 +63,7 @@ final readonly class RequestOverrideConfig
             if ($name !== self::HTTP
                 && $name !== self::RETRIES
                 && $name !== self::AUTH
+                && $name !== self::PLUGINS
             ) {
                 throw new \InvalidArgumentException(
                     "Unknown request override '{$name}'."
@@ -108,13 +116,73 @@ final readonly class RequestOverrideConfig
             );
         }
 
+        $plugins = self::plugins($overrides[self::PLUGINS] ?? null);
+
         return new self(
             $httpOverrides,
             $headers,
             $httpOptions,
             $maxAttempts,
-            $authSchemePreference
+            $authSchemePreference,
+            $plugins
         );
+    }
+
+    /**
+     * Return overrides with a call-scoped plugin appended.
+     */
+    public function withPlugin(PluginInterface $plugin): self
+    {
+        return new self(
+            $this->httpOverrides,
+            $this->headers,
+            $this->httpOptions,
+            $this->maxAttempts,
+            $this->authSchemePreference,
+            $this->plugins->add($plugin)
+        );
+    }
+
+    /**
+     * Return overrides with call-scoped plugins appended.
+     */
+    public function withPlugins(PluginInterface ...$plugins): self
+    {
+        return new self(
+            $this->httpOverrides,
+            $this->headers,
+            $this->httpOptions,
+            $this->maxAttempts,
+            $this->authSchemePreference,
+            $this->plugins->merge(new PluginCollection(...$plugins))
+        );
+    }
+
+    private static function plugins(mixed $value): PluginCollection
+    {
+        if ($value === null) {
+            return new PluginCollection();
+        }
+        if ($value instanceof PluginCollection) {
+            return $value;
+        }
+        if (!\is_array($value) || !\array_is_list($value)) {
+            throw new \InvalidArgumentException(
+                self::PLUGINS
+                . ' must be a PluginCollection or list of plugins.'
+            );
+        }
+
+        foreach ($value as $plugin) {
+            if (!$plugin instanceof PluginInterface) {
+                throw new \InvalidArgumentException(
+                    self::PLUGINS
+                    . ' must contain only PluginInterface instances.'
+                );
+            }
+        }
+
+        return new PluginCollection(...$value);
     }
 
     /** @return list<string> */

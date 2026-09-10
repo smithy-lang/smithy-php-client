@@ -6,6 +6,7 @@ namespace Smithy\Client\Interceptor;
 
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Smithy\Client\ClientConfig;
 use Smithy\Core\Serde\SerializableStructInterface;
 
 /**
@@ -34,6 +35,12 @@ use Smithy\Core\Serde\SerializableStructInterface;
  */
 abstract class AbstractInterceptor implements InterceptorInterface
 {
+    /** @inheritDoc */
+    public function modifyBeforeCall(CallContext $ctx): ClientConfig
+    {
+        return $ctx->config;
+    }
+
     /** @inheritDoc */
     public function interceptCalls(): bool
     {

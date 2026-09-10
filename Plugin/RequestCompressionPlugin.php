@@ -10,7 +10,7 @@ use Smithy\Client\Interceptor\RequestCompressionInterceptor;
 /**
  * Register modeled request compression.
  */
-final class RequestCompressionPlugin implements PluginInterface
+final class RequestCompressionPlugin extends AbstractPlugin
 {
     public const CONFIG_DISABLE_REQUEST_COMPRESSION =
         'DisableRequestCompression';

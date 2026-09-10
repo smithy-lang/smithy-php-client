@@ -6,6 +6,7 @@ namespace Smithy\Client\Interceptor;
 
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Smithy\Client\ClientConfig;
 use Smithy\Core\Serde\SerializableStructInterface;
 
 /**
@@ -35,6 +36,15 @@ use Smithy\Core\Serde\SerializableStructInterface;
  */
 interface InterceptorInterface
 {
+    /**
+     * Modify the configuration used for one client call.
+     *
+     * This is the first interceptor hook invoked for a call. Interceptors
+     * added to the returned configuration participate in call wrapping and
+     * execution hooks, but do not receive this hook for the current call.
+     */
+    public function modifyBeforeCall(CallContext $ctx): ClientConfig;
+
     /**
      * Report whether this interceptor wraps calls through
      * {@see interceptCall}.

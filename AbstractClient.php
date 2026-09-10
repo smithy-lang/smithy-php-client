@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Smithy\Client;
 
-use Smithy\Client\Interceptor\InputContext;
+use Smithy\Client\Interceptor\{
+    CallContext,
+    InputContext
+};
 use Smithy\Client\Pagination\PaginatedRequestInterface;
 use Smithy\Client\Pagination\Paginator;
 use Smithy\Client\Plugin\{
-    IdempotencyTokenPlugin,
     PluginCollection
 };
 use Smithy\Client\Waiter\Acceptor;
@@ -37,14 +39,13 @@ abstract class AbstractClient implements ClientInterface
     private readonly ClientPipeline $pipeline;
 
     /**
-     * Apply plugins and add shared idempotency-token handling.
+     * Resolve and apply client plugins.
      */
     public function __construct(
         ClientConfig $config,
         PluginCollection $plugins = new PluginCollection()
     )
     {
-        $plugins = $plugins->prepend(IdempotencyTokenPlugin::instance());
         $this->config = $plugins->apply($config);
         $this->pipeline = new ClientPipeline($this->config);
     }
@@ -84,22 +85,33 @@ abstract class AbstractClient implements ClientInterface
         ?RequestOverrideConfig $overrides = null
     ): SerializableStructInterface
     {
-        $interceptor = $this->config->interceptorChain;
+        $callConfig = $overrides === null || $overrides->plugins->isEmpty()
+            ? $this->config
+            : $overrides->plugins->apply($this->config);
+        $interceptor = $callConfig->interceptorChain;
+        $callConfig = $interceptor->modifyBeforeCall(
+            new CallContext($operation, $input, $callConfig)
+        );
+        $interceptor = $callConfig->interceptorChain;
+        $pipeline = $callConfig === $this->config
+            ? $this->pipeline
+            : new ClientPipeline($callConfig);
+
         if (!$interceptor->interceptCalls()) {
-            return $this->pipeline->execute($operation, $input, $overrides);
+            return $pipeline->execute($operation, $input, $overrides);
         }
 
         $ctx = new InputContext(
             $operation,
             $input,
-            $this->config,
+            $callConfig,
             $this
         );
 
         return $interceptor->interceptCall(
             $ctx,
             fn(InputContext $ctx): SerializableStructInterface =>
-                $this->pipeline->execute(
+                $pipeline->execute(
                     $operation,
                     $ctx->input,
                     $overrides

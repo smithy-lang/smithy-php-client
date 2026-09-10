@@ -10,7 +10,7 @@ use Smithy\Client\Interceptor\HttpChecksumInterceptor;
 /**
  * Register required HTTP checksum handling.
  */
-final class HttpChecksumPlugin implements PluginInterface
+final class HttpChecksumPlugin extends AbstractPlugin
 {
     /** @inheritDoc */
     public function configure(ClientConfig $config): ClientConfig

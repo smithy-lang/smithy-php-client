@@ -58,7 +58,7 @@ with one dependency replaced.
 | `Smithy\Client\Endpoint` | Static and bytecode endpoint resolution |
 | [`Smithy\Client\Interceptor`](Interceptor/README.md) | Request pipeline hooks and contexts |
 | `Smithy\Client\Pagination` | Schema-driven paginators |
-| `Smithy\Client\Plugin` | Reusable client configuration changes |
+| [`Smithy\Client\Plugin`](Plugin/README.md) | Reusable client configuration changes |
 | `Smithy\Client\Retry` | Retry strategies and request flags |
 | `Smithy\Client\Waiter` | Modeled polling and acceptor evaluation |
 

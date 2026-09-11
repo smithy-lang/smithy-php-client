@@ -12,8 +12,8 @@ use Smithy\Core\Shape\OperationInterface;
  * Resolve the supported auth scheme used for an operation.
  *
  * The default implementation uses the operation's effective auth schemes.
- * Subclasses may override {@see resolveAuthSchemeIds()} to provide another
- * ordered source of modeled candidates.
+ * Subclasses may override {@see resolveAuthSchemeOptions()} to provide
+ * another ordered source of candidates and property overrides.
  */
 class AuthSchemeResolver implements AuthSchemeResolverInterface
 {
@@ -30,18 +30,14 @@ class AuthSchemeResolver implements AuthSchemeResolverInterface
         array $preference = []
     ): ResolvedAuthScheme
     {
-        $modeledIds = $this->resolveAuthSchemeIds($operation, $config);
-        foreach (self::prioritizeModeledAuth(
-            $modeledIds,
+        $options = $this->resolveAuthSchemeOptions($operation, $config);
+        foreach (self::prioritizeOptions(
+            $options,
             $preference
-        ) as $id) {
-            $scheme = $config->getSupportedAuthScheme($id);
+        ) as $option) {
+            $scheme = $config->getSupportedAuthScheme($option->schemeId);
             if ($scheme !== null) {
-                return new ResolvedAuthScheme(
-                    $scheme,
-                    $scheme->getIdentityProperties($config),
-                    $scheme->getSignerProperties($config)
-                );
+                return self::resolveOption($scheme, $option, $config);
             }
         }
 
@@ -72,12 +68,20 @@ class AuthSchemeResolver implements AuthSchemeResolverInterface
             return $resolvedAuthScheme;
         }
 
-        foreach (self::prioritizeEndpointAuthSchemes(
-            $endpointAuthSchemes,
+        $options = [];
+        foreach ($endpointAuthSchemes as $endpointScheme) {
+            $options[] = new AuthSchemeOption(
+                $endpointScheme->schemeId,
+                signerPropertyOverrides: $endpointScheme->properties
+            );
+        }
+
+        foreach (self::prioritizeOptions(
+            $options,
             $preference
-        ) as $endpointScheme) {
+        ) as $option) {
             $scheme = $config->getSupportedAuthScheme(
-                $endpointScheme->schemeId
+                $option->schemeId
             );
             if ($scheme === null) {
                 continue;
@@ -89,19 +93,12 @@ class AuthSchemeResolver implements AuthSchemeResolverInterface
                     $resolvedAuthScheme->identityProperties,
                     [
                         ...$resolvedAuthScheme->signerProperties,
-                        ...$endpointScheme->properties
+                        ...$option->signerPropertyOverrides
                     ]
                 );
             }
 
-            return new ResolvedAuthScheme(
-                $scheme,
-                $scheme->getIdentityProperties($config),
-                [
-                    ...$scheme->getSignerProperties($config),
-                    ...$endpointScheme->properties
-                ]
-            );
+            return self::resolveOption($scheme, $option, $config);
         }
 
         $requested = [];
@@ -119,87 +116,79 @@ class AuthSchemeResolver implements AuthSchemeResolverInterface
     }
 
     /**
-     * Return the modeled auth scheme IDs in priority order.
+     * Return auth scheme options in priority order.
      *
-     * @return list<string>
+     * @return list<AuthSchemeOption>
      */
-    protected function resolveAuthSchemeIds(
+    protected function resolveAuthSchemeOptions(
         OperationInterface $operation,
         ClientConfig $config
     ): array
     {
-        return $operation->getEffectiveAuthSchemes();
+        $options = [];
+        foreach ($operation->getEffectiveAuthSchemes() as $schemeId) {
+            $options[] = new AuthSchemeOption($schemeId);
+        }
+
+        return $options;
     }
 
     /**
-     * Prioritize modeled auth schemes.
+     * Prioritize auth scheme options without losing duplicate options.
      *
-     * @param list<string> $modeledIds
+     * @param list<AuthSchemeOption> $options
      * @param list<string> $preference
      *
-     * @return list<string>
+     * @return list<AuthSchemeOption>
      */
-    private static function prioritizeModeledAuth(
-        array $modeledIds,
+    private static function prioritizeOptions(
+        array $options,
         array $preference
     ): array
     {
         $candidates = [];
         $seen = [];
         foreach ($preference as $preferredName) {
-            foreach ($modeledIds as $modeledId) {
-                if (!isset($seen[$modeledId])
-                    && self::authSchemeName($modeledId) === $preferredName
-                ) {
-                    $candidates[] = $modeledId;
-                    $seen[$modeledId] = true;
-                    break;
-                }
-            }
-        }
-
-        foreach ($modeledIds as $modeledId) {
-            if (!isset($seen[$modeledId])) {
-                $candidates[] = $modeledId;
-            }
-        }
-
-        return $candidates;
-    }
-
-    /**
-     * @param list<EndpointAuthScheme> $endpointAuthSchemes
-     * @param list<string> $preference
-     *
-     * @return list<EndpointAuthScheme>
-     */
-    private static function prioritizeEndpointAuthSchemes(
-        array $endpointAuthSchemes,
-        array $preference
-    ): array
-    {
-        $candidates = [];
-        $seen = [];
-        foreach ($preference as $preferredName) {
-            foreach ($endpointAuthSchemes as $endpointScheme) {
-                if (!isset($seen[$endpointScheme->schemeId])
-                    && self::authSchemeName($endpointScheme->schemeId)
+            foreach ($options as $index => $option) {
+                if (!isset($seen[$index])
+                    && self::authSchemeName($option->schemeId)
                         === $preferredName
                 ) {
-                    $candidates[] = $endpointScheme;
-                    $seen[$endpointScheme->schemeId] = true;
+                    $candidates[] = $option;
+                    $seen[$index] = true;
                 }
             }
         }
 
-        foreach ($endpointAuthSchemes as $endpointScheme) {
-            if (!isset($seen[$endpointScheme->schemeId])) {
-                $candidates[] = $endpointScheme;
-                $seen[$endpointScheme->schemeId] = true;
+        foreach ($options as $index => $option) {
+            if (!isset($seen[$index])) {
+                $candidates[] = $option;
             }
         }
 
         return $candidates;
+    }
+
+    /**
+     * Resolve a supported option with scheme defaults and option overrides.
+     */
+    private static function resolveOption(
+        AuthSchemeInterface $scheme,
+        AuthSchemeOption $option,
+        ClientConfig $config
+    ): ResolvedAuthScheme
+    {
+        return new ResolvedAuthScheme(
+            $scheme,
+            [
+                ...$scheme->getIdentityProperties($config),
+                ...$option->identityPropertyOverrides
+            ],
+            [
+                ...$scheme->getSignerProperties($config),
+                ...$option->signerPropertyOverrides
+            ]
+        );
     }
 
     private static function authSchemeName(string $schemeId): string

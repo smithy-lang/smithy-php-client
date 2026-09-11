@@ -8,18 +8,18 @@ use Smithy\Client\ClientConfig;
 use Smithy\Core\Shape\OperationInterface;
 
 /**
- * Resolve from a fixed list of auth scheme IDs for every operation.
+ * Resolve from a fixed list of auth scheme IDs or options for every operation.
  *
- * Constructed with scheme IDs in priority order. Useful for explicit
+ * Constructed with candidates in priority order. Useful for explicit
  * overrides and tests.
  */
 final class StaticAuthSchemeResolver extends AuthSchemeResolver
 {
     /**
-     * @param list<string> $schemeIds Scheme IDs in priority order.
+     * @param list<string|AuthSchemeOption> $candidates
      */
     public function __construct(
-        private readonly array $schemeIds
+        private readonly array $candidates
     ) {}
 
     /**
@@ -30,12 +30,19 @@ final class StaticAuthSchemeResolver extends AuthSchemeResolver
         return new self([NoAuthScheme::ID]);
     }
 
-    /** @return list<string> */
-    protected function resolveAuthSchemeIds(
+    /** @return list<AuthSchemeOption> */
+    protected function resolveAuthSchemeOptions(
         OperationInterface $operation,
         ClientConfig $config
     ): array
     {
-        return $this->schemeIds;
+        $options = [];
+        foreach ($this->candidates as $candidate) {
+            $options[] = \is_string($candidate)
+                ? new AuthSchemeOption($candidate)
+                : $candidate;
+        }
+
+        return $options;
     }
 }

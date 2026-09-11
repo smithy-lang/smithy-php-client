@@ -27,11 +27,23 @@ final readonly class HttpBearerAuthScheme implements AuthSchemeInterface
     }
 
     /** @inheritDoc */
+    public function getIdentityProperties(ClientConfig $config): array
+    {
+        return [];
+    }
+
+    /** @inheritDoc */
     public function getIdentityResolver(
         ClientConfig $config
     ): IdentityResolverInterface
     {
         return $this->tokenProvider;
+    }
+
+    /** @inheritDoc */
+    public function getSignerProperties(ClientConfig $config): array
+    {
+        return [];
     }
 
     /** @inheritDoc */

@@ -295,101 +295,6 @@ final class ClientPipeline
         );
     }
 
-    /**
-     * Apply endpoint-provided auth scheme compatibility overrides.
-     *
-     * @param list<string> $preference
-     */
-    private function applyEndpointAuthSchemeOverrides(
-        ResolvedAuthScheme $resolvedAuthScheme,
-        OperationInterface $operation,
-        Endpoint $endpoint,
-        ClientConfig $config,
-        array $preference
-    ): ResolvedAuthScheme
-    {
-        if ($endpoint->authSchemes === []) {
-            return $resolvedAuthScheme;
-        }
-
-        foreach (self::prioritizeEndpointAuthSchemes(
-            $endpoint,
-            $preference
-        ) as $endpointScheme) {
-            $scheme = $config->getSupportedAuthScheme(
-                $endpointScheme->schemeId
-            );
-            if ($scheme === null) {
-                continue;
-            }
-
-            $properties = $scheme === $resolvedAuthScheme->scheme
-                ? [
-                    ...$resolvedAuthScheme->properties,
-                    ...$endpointScheme->properties
-                ]
-                : $endpointScheme->properties;
-
-            return new ResolvedAuthScheme($scheme, $properties);
-        }
-
-        $requested = [];
-        foreach ($endpoint->authSchemes as $endpointScheme) {
-            $requested[] = $endpointScheme->schemeId;
-        }
-
-        throw new \RuntimeException(
-            'Endpoint resolution requested unsupported auth schemes ['
-            . \implode(', ', $requested)
-            . '] for operation '
-            . $operation->getName()
-            . '.'
-        );
-    }
-
-    /**
-     * @param list<string> $preference
-     *
-     * @return list<\Smithy\Client\Endpoint\EndpointAuthScheme>
-     */
-    private static function prioritizeEndpointAuthSchemes(
-        Endpoint $endpoint,
-        array $preference
-    ): array
-    {
-        $candidates = [];
-        $seen = [];
-        foreach ($preference as $preferredName) {
-            foreach ($endpoint->authSchemes as $endpointScheme) {
-                if (!isset($seen[$endpointScheme->schemeId])
-                    && self::authSchemeName($endpointScheme->schemeId)
-                        === $preferredName
-                ) {
-                    $candidates[] = $endpointScheme;
-                    $seen[$endpointScheme->schemeId] = true;
-                }
-            }
-        }
-
-        foreach ($endpoint->authSchemes as $endpointScheme) {
-            if (!isset($seen[$endpointScheme->schemeId])) {
-                $candidates[] = $endpointScheme;
-                $seen[$endpointScheme->schemeId] = true;
-            }
-        }
-
-        return $candidates;
-    }
-
-    private static function authSchemeName(string $schemeId): string
-    {
-        $separator = \strrpos($schemeId, '#');
-
-        return $separator === false
-            ? $schemeId
-            : \substr($schemeId, $separator + 1);
-    }
-
     private function applyEndpointHeaders(
         RequestInterface $request,
         Endpoint $endpoint
@@ -462,20 +367,22 @@ final class ClientPipeline
         $identity = $resolvedAuthScheme
             ->scheme
             ->getIdentityResolver($config)
-            ->resolveIdentity($resolvedAuthScheme->properties);
+            ->resolveIdentity($resolvedAuthScheme->identityProperties);
         $endpoint = $this->resolveEndpoint($operation, $input, $config);
-        $signingAuthScheme = $this->applyEndpointAuthSchemeOverrides(
-            $resolvedAuthScheme,
-            $operation,
-            $endpoint,
-            $config,
-            $preference
-        );
+        $signingAuthScheme = $config
+            ->authSchemeResolver
+            ->resolveEndpointAuthScheme(
+                $resolvedAuthScheme,
+                $operation,
+                $config,
+                $endpoint->authSchemes,
+                $preference
+            );
         if ($signingAuthScheme->scheme !== $resolvedAuthScheme->scheme) {
             $identity = $signingAuthScheme
                 ->scheme
                 ->getIdentityResolver($config)
-                ->resolveIdentity();
+                ->resolveIdentity($signingAuthScheme->identityProperties);
         }
 
         $request = $config->protocol->setServiceEndpoint(
@@ -556,7 +463,7 @@ final class ClientPipeline
                 ->sign(
                     $request,
                     $identity,
-                    $signingAuthScheme->properties
+                    $signingAuthScheme->signerProperties
                 );
             $reqCtx->replaceRequest($request);
 
@@ -677,7 +584,7 @@ final class ClientPipeline
                     ->sign(
                         $attemptRequest,
                         $identity,
-                        $signingAuthScheme->properties
+                        $signingAuthScheme->signerProperties
                     );
                 $attemptRequest = $signedRequest;
                 $response = $config->httpClient->sendRequest(

@@ -25,11 +25,25 @@ interface AuthSchemeInterface
     public function getSchemeId(): string;
 
     /**
+     * Return default properties used to resolve an identity.
+     *
+     * @return array<string, mixed>
+     */
+    public function getIdentityProperties(ClientConfig $config): array;
+
+    /**
      * Return the identity resolver for this scheme.
      */
     public function getIdentityResolver(
         ClientConfig $config
     ): IdentityResolverInterface;
+
+    /**
+     * Return default properties used to sign a request.
+     *
+     * @return array<string, mixed>
+     */
+    public function getSignerProperties(ClientConfig $config): array;
 
     /**
      * Return the signer for this scheme.

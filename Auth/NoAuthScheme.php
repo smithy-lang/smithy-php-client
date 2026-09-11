@@ -35,11 +35,23 @@ final class NoAuthScheme implements AuthSchemeInterface
     }
 
     /** @inheritDoc */
+    public function getIdentityProperties(ClientConfig $config): array
+    {
+        return [];
+    }
+
+    /** @inheritDoc */
     public function getIdentityResolver(
         ClientConfig $config
     ): IdentityResolverInterface
     {
         return AnonymousIdentityResolver::instance();
+    }
+
+    /** @inheritDoc */
+    public function getSignerProperties(ClientConfig $config): array
+    {
+        return [];
     }
 
     /** @inheritDoc */

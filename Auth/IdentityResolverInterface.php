@@ -10,15 +10,16 @@ namespace Smithy\Client\Auth;
  * Resolvers wrap credential sources. A chain resolver tries entries in order
  * and returns the first success.
  *
- * Properties passed to `resolveIdentity` come from the auth scheme.
- * Examples include signing scope or endpoint-selected signer hints.
+ * Properties passed to `resolveIdentity` are identity-specific defaults
+ * supplied by the auth scheme. Signer properties and endpoint-selected
+ * signing overrides are not included.
  */
 interface IdentityResolverInterface
 {
     /**
      * Resolve an identity from the supplied properties.
      *
-     * @param array<string, mixed> $properties Auth-scheme-supplied hints.
+     * @param array<string, mixed> $properties Identity-specific properties.
      * @throws \Throwable If no identity can be resolved.
      */
     public function resolveIdentity(array $properties = []): IdentityInterface;

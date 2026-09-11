@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Smithy\Client\Auth;
 
 use Smithy\Client\ClientConfig;
+use Smithy\Client\Endpoint\EndpointAuthScheme;
 use Smithy\Core\Shape\OperationInterface;
 
 /**
@@ -33,15 +34,85 @@ class AuthSchemeResolver implements AuthSchemeResolverInterface
         foreach (self::prioritizeModeledAuth(
             $modeledIds,
             $preference
-        ) as [$id, $properties]) {
+        ) as $id) {
             $scheme = $config->getSupportedAuthScheme($id);
             if ($scheme !== null) {
-                return new ResolvedAuthScheme($scheme, $properties);
+                return new ResolvedAuthScheme(
+                    $scheme,
+                    $scheme->getIdentityProperties($config),
+                    $scheme->getSignerProperties($config)
+                );
             }
         }
 
         throw new \RuntimeException(
             'No supported auth scheme is available for operation '
+            . $operation->getName()
+            . '.'
+        );
+    }
+
+    /**
+     * Reconcile a resolved auth scheme with endpoint auth options.
+     *
+     * @param list<EndpointAuthScheme> $endpointAuthSchemes
+     * @param list<string> $preference Auth scheme names in preferred order.
+     *
+     * @throws \RuntimeException If no endpoint scheme can be resolved.
+     */
+    final public function resolveEndpointAuthScheme(
+        ResolvedAuthScheme $resolvedAuthScheme,
+        OperationInterface $operation,
+        ClientConfig $config,
+        array $endpointAuthSchemes,
+        array $preference = []
+    ): ResolvedAuthScheme
+    {
+        if ($endpointAuthSchemes === []) {
+            return $resolvedAuthScheme;
+        }
+
+        foreach (self::prioritizeEndpointAuthSchemes(
+            $endpointAuthSchemes,
+            $preference
+        ) as $endpointScheme) {
+            $scheme = $config->getSupportedAuthScheme(
+                $endpointScheme->schemeId
+            );
+            if ($scheme === null) {
+                continue;
+            }
+
+            if ($scheme === $resolvedAuthScheme->scheme) {
+                return new ResolvedAuthScheme(
+                    $scheme,
+                    $resolvedAuthScheme->identityProperties,
+                    [
+                        ...$resolvedAuthScheme->signerProperties,
+                        ...$endpointScheme->properties
+                    ]
+                );
+            }
+
+            return new ResolvedAuthScheme(
+                $scheme,
+                $scheme->getIdentityProperties($config),
+                [
+                    ...$scheme->getSignerProperties($config),
+                    ...$endpointScheme->properties
+                ]
+            );
+        }
+
+        $requested = [];
+        foreach ($endpointAuthSchemes as $endpointScheme) {
+            $requested[] = $endpointScheme->schemeId;
+        }
+
+        throw new \RuntimeException(
+            'Endpoint resolution requested unsupported auth schemes ['
+            . \implode(', ', $requested)
+            . '] for operation '
             . $operation->getName()
             . '.'
         );
@@ -66,7 +137,7 @@ class AuthSchemeResolver implements AuthSchemeResolverInterface
      * @param list<string> $modeledIds
      * @param list<string> $preference
      *
-     * @return list<array{string, array<string, mixed>}>
+     * @return list<string>
      */
     private static function prioritizeModeledAuth(
         array $modeledIds,
@@ -80,7 +151,7 @@ class AuthSchemeResolver implements AuthSchemeResolverInterface
                 if (!isset($seen[$modeledId])
                     && self::authSchemeName($modeledId) === $preferredName
                 ) {
-                    $candidates[] = [$modeledId, []];
+                    $candidates[] = $modeledId;
                     $seen[$modeledId] = true;
                     break;
                 }
@@ -89,7 +160,42 @@ class AuthSchemeResolver implements AuthSchemeResolverInterface
 
         foreach ($modeledIds as $modeledId) {
             if (!isset($seen[$modeledId])) {
-                $candidates[] = [$modeledId, []];
+                $candidates[] = $modeledId;
+            }
+        }
+
+        return $candidates;
+    }
+
+    /**
+     * @param list<EndpointAuthScheme> $endpointAuthSchemes
+     * @param list<string> $preference
+     *
+     * @return list<EndpointAuthScheme>
+     */
+    private static function prioritizeEndpointAuthSchemes(
+        array $endpointAuthSchemes,
+        array $preference
+    ): array
+    {
+        $candidates = [];
+        $seen = [];
+        foreach ($preference as $preferredName) {
+            foreach ($endpointAuthSchemes as $endpointScheme) {
+                if (!isset($seen[$endpointScheme->schemeId])
+                    && self::authSchemeName($endpointScheme->schemeId)
+                        === $preferredName
+                ) {
+                    $candidates[] = $endpointScheme;
+                    $seen[$endpointScheme->schemeId] = true;
+                }
+            }
+        }
+
+        foreach ($endpointAuthSchemes as $endpointScheme) {
+            if (!isset($seen[$endpointScheme->schemeId])) {
+                $candidates[] = $endpointScheme;
+                $seen[$endpointScheme->schemeId] = true;
             }
         }
 

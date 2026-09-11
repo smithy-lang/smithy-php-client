@@ -18,8 +18,9 @@ use Psr\Http\Message\RequestInterface;
 interface SignerInterface
 {
     /**
-     * @param array<string, mixed> $properties Signing hints from the auth
-     *                                         scheme.
+     * @param array<string, mixed> $properties Effective signing properties
+     *                                         from the auth scheme and
+     *                                         endpoint.
      */
     public function sign(
         RequestInterface $request,

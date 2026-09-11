@@ -56,6 +56,8 @@ use Smithy\Http\Message\{
  */
 final class ClientPipeline
 {
+    private const UNRESOLVED_ENDPOINT = '/';
+
     public function __construct(
         private readonly ClientConfig $config
     ) {}
@@ -114,9 +116,7 @@ final class ClientPipeline
             }
             $interceptor->readBeforeSerialization($inputCtx);
 
-            $endpoint = $this->resolveEndpoint($operation, $input, $config);
-            $request = $this->serialize($operation, $input, $endpoint);
-            $request = $this->applyEndpointHeaders($request, $endpoint);
+            $request = $this->serialize($operation, $input);
             $request = $this->applyOverrideHeaders($request, $overrides);
 
             $reqCtx = new RequestContext(
@@ -134,16 +134,6 @@ final class ClientPipeline
             }
             $retryRequest = $reqCtx->request;
 
-            $resolvedAuthScheme = $config
-                ->authSchemeResolver
-                ->resolveAuthScheme(
-                    $operation,
-                    $endpoint,
-                    $config,
-                    $overrides?->authSchemePreference
-                        ?? $config->authSchemePreference
-                );
-
             $requestFlags = self::resolveRetryRequestFlags(
                 $operation,
                 $config
@@ -159,7 +149,7 @@ final class ClientPipeline
                 [$respCtx, $outCtx, $error] = $this->executeAttempt(
                     $interceptor,
                     $reqCtx,
-                    $resolvedAuthScheme,
+                    $overrides,
                     $httpOptions
                 );
 
@@ -284,14 +274,13 @@ final class ClientPipeline
      */
     private function serialize(
         OperationInterface $operation,
-        SerializableStructInterface $input,
-        Endpoint $endpoint
+        SerializableStructInterface $input
     ): RequestInterface
     {
         return $this->config->protocol->serializeRequest(
             $operation,
             $input,
-            $endpoint->url
+            self::UNRESOLVED_ENDPOINT
         );
     }
 
@@ -304,6 +293,101 @@ final class ClientPipeline
         return $config->endpointResolver->resolveEndpoint(
             new EndpointResolverParams($operation, $input, $config)
         );
+    }
+
+    /**
+     * Apply endpoint-provided auth scheme compatibility overrides.
+     *
+     * @param list<string> $preference
+     */
+    private function applyEndpointAuthSchemeOverrides(
+        ResolvedAuthScheme $resolvedAuthScheme,
+        OperationInterface $operation,
+        Endpoint $endpoint,
+        ClientConfig $config,
+        array $preference
+    ): ResolvedAuthScheme
+    {
+        if ($endpoint->authSchemes === []) {
+            return $resolvedAuthScheme;
+        }
+
+        foreach (self::prioritizeEndpointAuthSchemes(
+            $endpoint,
+            $preference
+        ) as $endpointScheme) {
+            $scheme = $config->getSupportedAuthScheme(
+                $endpointScheme->schemeId
+            );
+            if ($scheme === null) {
+                continue;
+            }
+
+            $properties = $scheme === $resolvedAuthScheme->scheme
+                ? [
+                    ...$resolvedAuthScheme->properties,
+                    ...$endpointScheme->properties
+                ]
+                : $endpointScheme->properties;
+
+            return new ResolvedAuthScheme($scheme, $properties);
+        }
+
+        $requested = [];
+        foreach ($endpoint->authSchemes as $endpointScheme) {
+            $requested[] = $endpointScheme->schemeId;
+        }
+
+        throw new \RuntimeException(
+            'Endpoint resolution requested unsupported auth schemes ['
+            . \implode(', ', $requested)
+            . '] for operation '
+            . $operation->getName()
+            . '.'
+        );
+    }
+
+    /**
+     * @param list<string> $preference
+     *
+     * @return list<\Smithy\Client\Endpoint\EndpointAuthScheme>
+     */
+    private static function prioritizeEndpointAuthSchemes(
+        Endpoint $endpoint,
+        array $preference
+    ): array
+    {
+        $candidates = [];
+        $seen = [];
+        foreach ($preference as $preferredName) {
+            foreach ($endpoint->authSchemes as $endpointScheme) {
+                if (!isset($seen[$endpointScheme->schemeId])
+                    && self::authSchemeName($endpointScheme->schemeId)
+                        === $preferredName
+                ) {
+                    $candidates[] = $endpointScheme;
+                    $seen[$endpointScheme->schemeId] = true;
+                }
+            }
+        }
+
+        foreach ($endpoint->authSchemes as $endpointScheme) {
+            if (!isset($seen[$endpointScheme->schemeId])) {
+                $candidates[] = $endpointScheme;
+                $seen[$endpointScheme->schemeId] = true;
+            }
+        }
+
+        return $candidates;
+    }
+
+    private static function authSchemeName(string $schemeId): string
+    {
+        $separator = \strrpos($schemeId, '#');
+
+        return $separator === false
+            ? $schemeId
+            : \substr($schemeId, $separator + 1);
     }
 
     private function applyEndpointHeaders(
@@ -350,6 +434,61 @@ final class ClientPipeline
     }
 
     /**
+     * Resolve attempt-scoped auth and endpoint state.
+     *
+     * @return array{
+     *     RequestInterface,
+     *     ResolvedAuthScheme,
+     *     \Smithy\Client\Auth\IdentityInterface
+     * }
+     */
+    private function prepareAttemptRequest(
+        OperationInterface $operation,
+        SerializableStructInterface $input,
+        RequestInterface $request,
+        ClientConfig $config,
+        ?RequestOverrideConfig $overrides
+    ): array
+    {
+        $preference = $overrides?->authSchemePreference
+            ?? $config->authSchemePreference;
+        $resolvedAuthScheme = $config
+            ->authSchemeResolver
+            ->resolveAuthScheme(
+                $operation,
+                $config,
+                $preference
+            );
+        $identity = $resolvedAuthScheme
+            ->scheme
+            ->getIdentityResolver($config)
+            ->resolveIdentity($resolvedAuthScheme->properties);
+        $endpoint = $this->resolveEndpoint($operation, $input, $config);
+        $signingAuthScheme = $this->applyEndpointAuthSchemeOverrides(
+            $resolvedAuthScheme,
+            $operation,
+            $endpoint,
+            $config,
+            $preference
+        );
+        if ($signingAuthScheme->scheme !== $resolvedAuthScheme->scheme) {
+            $identity = $signingAuthScheme
+                ->scheme
+                ->getIdentityResolver($config)
+                ->resolveIdentity();
+        }
+
+        $request = $config->protocol->setServiceEndpoint(
+            $request,
+            $endpoint
+        );
+        $request = $this->applyEndpointHeaders($request, $endpoint);
+        $request = $this->applyOverrideHeaders($request, $overrides);
+
+        return [$request, $signingAuthScheme, $identity];
+    }
+
+    /**
      * Execute one signed HTTP attempt.
      *
      * Returns a triple `[responseContext, outputContext, error]`. On success
@@ -361,7 +500,7 @@ final class ClientPipeline
     private function executeAttempt(
         InterceptorInterface $interceptor,
         RequestContext $reqCtx,
-        ResolvedAuthScheme $resolvedAuthScheme,
+        ?RequestOverrideConfig $overrides,
         ?HttpRequestOptions $httpOptions
     ): array
     {
@@ -393,6 +532,17 @@ final class ClientPipeline
         }
 
         try {
+            $config = $reqCtx->config;
+            [$request, $signingAuthScheme, $identity] =
+                $this->prepareAttemptRequest(
+                    $reqCtx->operation,
+                    $reqCtx->input,
+                    $request,
+                    $config,
+                    $overrides
+                );
+            $reqCtx->replaceRequest($request);
+
             $request = $interceptor->modifyBeforeSigning($reqCtx);
             if ($request !== $reqCtx->request) {
                 $reqCtx->replaceRequest($request);
@@ -400,17 +550,13 @@ final class ClientPipeline
 
             $interceptor->readBeforeSigning($reqCtx);
 
-            $identity = $resolvedAuthScheme
-                ->scheme
-                ->getIdentityResolver($this->config)
-                ->resolveIdentity($resolvedAuthScheme->properties);
-            $request = $resolvedAuthScheme
+            $request = $signingAuthScheme
                 ->scheme
                 ->getSigner()
                 ->sign(
                     $request,
                     $identity,
-                    $resolvedAuthScheme->properties
+                    $signingAuthScheme->properties
                 );
             $reqCtx->replaceRequest($request);
 
@@ -503,21 +649,9 @@ final class ClientPipeline
         HttpRequestOptions $effectiveHttpOptions
     ): SerializableStructInterface
     {
-        $endpoint = $this->resolveEndpoint($operation, $input, $config);
-        $request = $this->serialize($operation, $input, $endpoint);
-
-        $request = $this->applyEndpointHeaders($request, $endpoint);
+        $request = $this->serialize($operation, $input);
         $request = $this->applyOverrideHeaders($request, $overrides);
 
-        $resolvedAuthScheme = $config
-            ->authSchemeResolver
-            ->resolveAuthScheme(
-                $operation,
-                $endpoint,
-                $config,
-                $overrides?->authSchemePreference
-                    ?? $config->authSchemePreference
-            );
         $requestFlags = self::resolveRetryRequestFlags($operation, $config);
         $retryState = $config->retryStrategy->begin(
             $config->retryScope,
@@ -529,17 +663,21 @@ final class ClientPipeline
             $attemptRequest = $request;
             $response = null;
             try {
-                $identity = $resolvedAuthScheme
-                    ->scheme
-                    ->getIdentityResolver($config)
-                    ->resolveIdentity($resolvedAuthScheme->properties);
-                $signedRequest = $resolvedAuthScheme
+                [$attemptRequest, $signingAuthScheme, $identity] =
+                    $this->prepareAttemptRequest(
+                        $operation,
+                        $input,
+                        $request,
+                        $config,
+                        $overrides
+                    );
+                $signedRequest = $signingAuthScheme
                     ->scheme
                     ->getSigner()
                     ->sign(
-                        $request,
+                        $attemptRequest,
                         $identity,
-                        $resolvedAuthScheme->properties
+                        $signingAuthScheme->properties
                     );
                 $attemptRequest = $signedRequest;
                 $response = $config->httpClient->sendRequest(

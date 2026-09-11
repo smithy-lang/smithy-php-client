@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Smithy\Client\Auth;
 
 use Smithy\Client\ClientConfig;
-use Smithy\Client\Endpoint\Endpoint;
 use Smithy\Core\Shape\OperationInterface;
 
 /**
@@ -26,35 +25,19 @@ class AuthSchemeResolver implements AuthSchemeResolverInterface
      */
     final public function resolveAuthScheme(
         OperationInterface $operation,
-        Endpoint $endpoint,
         ClientConfig $config,
         array $preference = []
     ): ResolvedAuthScheme
     {
         $modeledIds = $this->resolveAuthSchemeIds($operation, $config);
-        foreach ($this->authCandidates(
+        foreach (self::prioritizeModeledAuth(
             $modeledIds,
-            $endpoint,
             $preference
         ) as [$id, $properties]) {
             $scheme = $config->getSupportedAuthScheme($id);
             if ($scheme !== null) {
                 return new ResolvedAuthScheme($scheme, $properties);
             }
-        }
-
-        if ($endpoint->authSchemes !== []) {
-            $requested = [];
-            foreach ($endpoint->authSchemes as $endpointScheme) {
-                $requested[] = $endpointScheme->schemeId;
-            }
-            throw new \RuntimeException(
-                'Endpoint resolution requested unsupported auth schemes ['
-                . \implode(', ', $requested)
-                . '] for operation '
-                . $operation->getName()
-                . '.'
-            );
         }
 
         throw new \RuntimeException(
@@ -75,54 +58,6 @@ class AuthSchemeResolver implements AuthSchemeResolverInterface
     ): array
     {
         return $operation->getEffectiveAuthSchemes();
-    }
-
-    /**
-     * Build auth candidates from endpoint and modeled schemes.
-     *
-     * @param list<string> $modeledIds
-     * @param list<string> $preference
-     *
-     * @return list<array{string, array<string, mixed>}>
-     */
-    private function authCandidates(
-        array $modeledIds,
-        Endpoint $endpoint,
-        array $preference
-    ): array
-    {
-        if ($endpoint->authSchemes === []) {
-            return self::prioritizeModeledAuth($modeledIds, $preference);
-        }
-
-        $candidates = [];
-        $seen = [];
-        foreach ($preference as $preferredName) {
-            foreach ($endpoint->authSchemes as $endpointScheme) {
-                if (!isset($seen[$endpointScheme->schemeId])
-                    && self::authSchemeName($endpointScheme->schemeId)
-                        === $preferredName
-                ) {
-                    $candidates[] = [
-                        $endpointScheme->schemeId,
-                        $endpointScheme->properties
-                    ];
-                    $seen[$endpointScheme->schemeId] = true;
-                }
-            }
-        }
-
-        foreach ($endpoint->authSchemes as $endpointScheme) {
-            if (!isset($seen[$endpointScheme->schemeId])) {
-                $candidates[] = [
-                    $endpointScheme->schemeId,
-                    $endpointScheme->properties
-                ];
-                $seen[$endpointScheme->schemeId] = true;
-            }
-        }
-
-        return $candidates;
     }
 
     /**

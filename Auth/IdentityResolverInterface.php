@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Smithy\Client\Auth;
 
 /**
- * Produce an {@see IdentityInterface} from ambient context.
+ * Resolve an {@see IdentityInterface} from ambient context.
  *
- * Resolvers wrap credential sources. A chain resolver tries entries in order
- * and returns the first success.
+ * An expected source miss is returned as an {@see IdentityResult} without an
+ * identity. Unexpected or unrecoverable failures are thrown.
  *
  * Properties passed to `resolveIdentity` are identity-specific defaults
  * supplied by the auth scheme. Signer properties and endpoint-selected
@@ -17,10 +17,10 @@ namespace Smithy\Client\Auth;
 interface IdentityResolverInterface
 {
     /**
-     * Resolve an identity from the supplied properties.
+     * Resolve an identity result from the supplied properties.
      *
      * @param array<string, mixed> $properties Identity-specific properties.
-     * @throws \Throwable If no identity can be resolved.
+     * @throws \Throwable On unexpected or unrecoverable failure.
      */
-    public function resolveIdentity(array $properties = []): IdentityInterface;
+    public function resolveIdentity(array $properties = []): IdentityResult;
 }

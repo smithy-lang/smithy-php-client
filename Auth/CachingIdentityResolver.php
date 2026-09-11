@@ -34,19 +34,27 @@ final class CachingIdentityResolver implements IdentityResolverInterface
     }
 
     /** @inheritDoc */
-    public function resolveIdentity(array $properties = []): IdentityInterface
+    public function resolveIdentity(array $properties = []): IdentityResult
     {
         if ($this->cached !== null
             && $this->cachedProperties === $properties
             && !$this->requiresRefresh($this->cached)
         ) {
-            return $this->cached;
+            return IdentityResult::success($this->cached);
         }
 
-        $this->cached = $this->inner->resolveIdentity($properties);
+        $result = $this->inner->resolveIdentity($properties);
+        if ($result->identity === null) {
+            $this->cached = null;
+            $this->cachedProperties = null;
+
+            return $result;
+        }
+
+        $this->cached = $result->identity;
         $this->cachedProperties = $properties;
 
-        return $this->cached;
+        return $result;
     }
 
     /**

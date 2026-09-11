@@ -367,7 +367,8 @@ final class ClientPipeline
         $identity = $resolvedAuthScheme
             ->scheme
             ->getIdentityResolver($config)
-            ->resolveIdentity($resolvedAuthScheme->identityProperties);
+            ->resolveIdentity($resolvedAuthScheme->identityProperties)
+            ->unwrap();
         $endpoint = $this->resolveEndpoint($operation, $input, $config);
         $signingAuthScheme = $config
             ->authSchemeResolver
@@ -382,7 +383,8 @@ final class ClientPipeline
             $identity = $signingAuthScheme
                 ->scheme
                 ->getIdentityResolver($config)
-                ->resolveIdentity($signingAuthScheme->identityProperties);
+                ->resolveIdentity($signingAuthScheme->identityProperties)
+                ->unwrap();
         }
 
         $request = $config->protocol->setServiceEndpoint(

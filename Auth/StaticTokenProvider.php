@@ -27,8 +27,8 @@ final readonly class StaticTokenProvider implements IdentityResolverInterface
     /** @inheritDoc */
     public function resolveIdentity(
         array $properties = []
-    ): IdentityInterface
+    ): IdentityResult
     {
-        return $this->token;
+        return IdentityResult::success($this->token);
     }
 }

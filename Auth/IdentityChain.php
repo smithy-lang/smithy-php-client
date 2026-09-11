@@ -70,57 +70,57 @@ final class IdentityChain implements IdentityChainInterface
     }
 
     /** @inheritDoc */
-    public function resolveIdentity(array $properties = []): IdentityInterface
+    public function resolveIdentity(array $properties = []): IdentityResult
     {
         if ($this->cachedIdentity !== null
             && $this->cachedIdentityProperties === $properties
             && !$this->requiresRefresh($this->cachedIdentity)
         ) {
-            return $this->cachedIdentity;
+            return IdentityResult::success($this->cachedIdentity);
         }
 
         if ($this->registrations === []) {
-            throw new \RuntimeException(
+            return IdentityResult::notFound(
+                self::class,
                 'No identity resolvers were registered in the chain.'
             );
         }
 
         $failures = [];
-        $previous = null;
 
         foreach ($this->registrations as $registration) {
-            try {
-                $identity = $registration->resolver->resolveIdentity(
-                    $properties
-                );
-                if (!$identity instanceof $this->identityType) {
-                    throw new \RuntimeException(
-                        'Identity resolver returned '
-                            . $identity::class
-                            . ', expected '
-                            . $this->identityType
-                            . '.'
-                    );
-                }
-
-                $this->cachedIdentity = $identity;
-                $this->cachedIdentityProperties = $properties;
-                $this->lastResolvedMetadata = $registration->metadata;
-
-                return $identity;
-            } catch (\Throwable $e) {
+            $result = $registration->resolver->resolveIdentity($properties);
+            $identity = $result->identity;
+            if ($identity === null) {
                 $failures[] = $registration->metadata->providerName
                     . ': '
-                    . $e->getMessage();
-                $previous = $e;
+                    . $result->error;
+
+                continue;
             }
+
+            if (!$identity instanceof $this->identityType) {
+                throw new \RuntimeException(
+                    'Identity resolver returned '
+                        . $identity::class
+                        . ', expected '
+                        . $this->identityType
+                        . '.'
+                );
+            }
+
+            $this->cachedIdentity = $identity;
+            $this->cachedIdentityProperties = $properties;
+            $this->lastResolvedMetadata = $registration->metadata;
+
+            return $result;
         }
 
-        throw new \RuntimeException(
+        return IdentityResult::notFound(
+            self::class,
             'Unable to resolve identity from any provider in the chain. '
                 . 'Tried: '
-                . \implode('; ', $failures),
-            previous: $previous
+                . \implode('; ', $failures)
         );
     }
 

@@ -92,14 +92,12 @@ final class ChainSetup
     /**
      * Add a resolver to the identity chain.
      *
-     * @param null|callable(): void $invalidator
      * @param null|list<string> $featureIds
      *
      * @return void
      */
     public function addResolver(
         IdentityResolverInterface $resolver,
-        mixed $invalidator = null,
         ?array $featureIds = null
     ): void
     {
@@ -112,22 +110,19 @@ final class ChainSetup
         $this->registrations[] = new IdentityResolverRegistration(
             resolver: $resolver,
             metadata: $this->metadataForRegistration($featureIds),
-            terminal: false,
-            invalidator: $invalidator
+            terminal: false
         );
     }
 
     /**
      * Add a terminal resolver to the identity chain.
      *
-     * @param null|callable(): void $invalidator
      * @param null|list<string> $featureIds
      *
      * @return void
      */
     public function addTerminalResolver(
         IdentityResolverInterface $resolver,
-        mixed $invalidator = null,
         ?array $featureIds = null
     ): void
     {
@@ -140,8 +135,7 @@ final class ChainSetup
         $this->registrations[] = new IdentityResolverRegistration(
             resolver: $resolver,
             metadata: $this->metadataForRegistration($featureIds),
-            terminal: true,
-            invalidator: $invalidator
+            terminal: true
         );
         $this->terminal = true;
     }

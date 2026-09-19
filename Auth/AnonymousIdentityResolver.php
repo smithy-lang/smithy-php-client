@@ -26,4 +26,7 @@ final class AnonymousIdentityResolver implements IdentityResolverInterface
     {
         return IdentityResult::success(AnonymousIdentity::instance());
     }
+
+    /** @inheritDoc */
+    public function invalidate(IdentityInterface $rejectedIdentity): void {}
 }

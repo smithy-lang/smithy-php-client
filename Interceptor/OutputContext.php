@@ -6,6 +6,10 @@ namespace Smithy\Client\Interceptor;
 
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Smithy\Client\Auth\{
+    IdentityInterface,
+    IdentityResolverInterface
+};
 use Smithy\Client\ClientConfig;
 use Smithy\Core\Serde\SerializableStructInterface;
 use Smithy\Core\Shape\OperationInterface;
@@ -26,6 +30,10 @@ use Smithy\Core\Shape\OperationInterface;
  * the point the completion hooks fire. An error thrown from
  * `modifyBeforeSerialization` invokes `modifyBeforeCompletion` before a
  * request is constructed.
+ *
+ * `identity` and `identityResolver` identify the exact attempt-scoped
+ * identity and resolver selected for signing. They are null when execution
+ * fails before identity resolution or when the operation does not use auth.
  */
 final class OutputContext
 {
@@ -38,7 +46,9 @@ final class OutputContext
         public ClientConfig $config,
         public ?RequestInterface $request,
         public ?ResponseInterface $response,
-        public ?SerializableStructInterface $output
+        public ?SerializableStructInterface $output,
+        public ?IdentityInterface $identity = null,
+        public ?IdentityResolverInterface $identityResolver = null
     ) {}
 
     /**
@@ -74,7 +84,9 @@ final class OutputContext
                 $this->config,
                 $this->request,
                 $this->response,
-                $output
+                $output,
+                $this->identity,
+                $this->identityResolver
             );
     }
 
@@ -91,7 +103,9 @@ final class OutputContext
                 $this->config,
                 $this->request,
                 $response,
-                $this->output
+                $this->output,
+                $this->identity,
+                $this->identityResolver
             );
     }
 }

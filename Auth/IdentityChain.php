@@ -32,17 +32,25 @@ final class IdentityChain implements IdentityChainInterface
 
     private ?ResolvedIdentityMetadata $lastResolvedMetadata = null;
 
+    private bool $refreshRequired = false;
+
+    /** @var \Closure(IdentityInterface, IdentityInterface): bool */
+    private readonly \Closure $identityMatcher;
+
     /**
      * @param class-string<IdentityInterface> $identityType
      * @param list<ChainIdentityProviderInterface> $providers
      * @param list<string> $slotOrder
      * @param array<string, mixed> $properties
+     * @param null|callable(IdentityInterface, IdentityInterface): bool
+     *     $identityMatcher Compare the cached identity to a rejected identity.
      */
     public function __construct(
         string $identityType,
         array $providers,
         array $slotOrder,
-        array $properties = []
+        array $properties = [],
+        ?callable $identityMatcher = null
     )
     {
         if (!\is_a($identityType, IdentityInterface::class, true)) {
@@ -54,6 +62,12 @@ final class IdentityChain implements IdentityChainInterface
         }
 
         $this->identityType = $identityType;
+        $this->identityMatcher = $identityMatcher === null
+            ? static fn(
+                IdentityInterface $cached,
+                IdentityInterface $rejected
+            ): bool => $cached === $rejected
+            : \Closure::fromCallable($identityMatcher);
         $sortedProviders = self::sortProviders($providers, $slotOrder);
         $setup = new ChainSetup($properties);
 
@@ -74,6 +88,7 @@ final class IdentityChain implements IdentityChainInterface
     {
         if ($this->cachedIdentity !== null
             && $this->cachedIdentityProperties === $properties
+            && !$this->refreshRequired
             && !$this->requiresRefresh($this->cachedIdentity)
         ) {
             return IdentityResult::success($this->cachedIdentity);
@@ -112,6 +127,7 @@ final class IdentityChain implements IdentityChainInterface
             $this->cachedIdentity = $identity;
             $this->cachedIdentityProperties = $properties;
             $this->lastResolvedMetadata = $registration->metadata;
+            $this->refreshRequired = false;
 
             return $result;
         }
@@ -125,14 +141,19 @@ final class IdentityChain implements IdentityChainInterface
     }
 
     /** @inheritDoc */
-    public function invalidate(): void
+    public function invalidate(IdentityInterface $rejectedIdentity): void
     {
-        $this->cachedIdentity = null;
-        $this->cachedIdentityProperties = null;
-        $this->lastResolvedMetadata = null;
+        if ($this->cachedIdentity !== null
+            && ($this->identityMatcher)(
+                $this->cachedIdentity,
+                $rejectedIdentity
+            )
+        ) {
+            $this->refreshRequired = true;
+        }
 
         foreach ($this->registrations as $registration) {
-            $registration->invalidate();
+            $registration->invalidate($rejectedIdentity);
         }
     }
 

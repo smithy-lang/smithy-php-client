@@ -31,4 +31,7 @@ final readonly class StaticTokenProvider implements IdentityResolverInterface
     {
         return IdentityResult::success($this->token);
     }
+
+    /** @inheritDoc */
+    public function invalidate(IdentityInterface $rejectedIdentity): void {}
 }

@@ -8,7 +8,8 @@ namespace Smithy\Client\Auth;
  * Cache identities returned by another resolver until they require refresh.
  *
  * Cache entries are scoped to the resolution properties. Identities without
- * an expiration remain cached indefinitely.
+ * an expiration remain cached indefinitely unless a matching rejected
+ * identity marks the entry for refresh.
  */
 final class CachingIdentityResolver implements IdentityResolverInterface
 {
@@ -17,13 +18,21 @@ final class CachingIdentityResolver implements IdentityResolverInterface
     /** @var array<string, mixed>|null */
     private ?array $cachedProperties = null;
 
+    private bool $refreshRequired = false;
+
+    /** @var \Closure(IdentityInterface, IdentityInterface): bool */
+    private readonly \Closure $identityMatcher;
+
     /**
      * @param int $refreshWindowSeconds Refresh this many seconds before
      *                                 expiration.
+     * @param null|callable(IdentityInterface, IdentityInterface): bool
+     *     $identityMatcher Compare the cached identity to a rejected identity.
      */
     public function __construct(
         private readonly IdentityResolverInterface $inner,
-        private readonly int $refreshWindowSeconds = 300
+        private readonly int $refreshWindowSeconds = 300,
+        ?callable $identityMatcher = null
     )
     {
         if ($refreshWindowSeconds < 0) {
@@ -31,6 +40,13 @@ final class CachingIdentityResolver implements IdentityResolverInterface
                 'Refresh window must be non-negative.'
             );
         }
+
+        $this->identityMatcher = $identityMatcher === null
+            ? static fn(
+                IdentityInterface $cached,
+                IdentityInterface $rejected
+            ): bool => $cached === $rejected
+            : \Closure::fromCallable($identityMatcher);
     }
 
     /** @inheritDoc */
@@ -38,6 +54,7 @@ final class CachingIdentityResolver implements IdentityResolverInterface
     {
         if ($this->cached !== null
             && $this->cachedProperties === $properties
+            && !$this->refreshRequired
             && !$this->requiresRefresh($this->cached)
         ) {
             return IdentityResult::success($this->cached);
@@ -45,14 +62,17 @@ final class CachingIdentityResolver implements IdentityResolverInterface
 
         $result = $this->inner->resolveIdentity($properties);
         if ($result->identity === null) {
-            $this->cached = null;
-            $this->cachedProperties = null;
+            if (!$this->refreshRequired) {
+                $this->cached = null;
+                $this->cachedProperties = null;
+            }
 
             return $result;
         }
 
         $this->cached = $result->identity;
         $this->cachedProperties = $properties;
+        $this->refreshRequired = false;
 
         return $result;
     }
@@ -63,6 +83,18 @@ final class CachingIdentityResolver implements IdentityResolverInterface
     public function getInner(): IdentityResolverInterface
     {
         return $this->inner;
+    }
+
+    /** @inheritDoc */
+    public function invalidate(IdentityInterface $rejectedIdentity): void
+    {
+        if ($this->cached !== null
+            && ($this->identityMatcher)($this->cached, $rejectedIdentity)
+        ) {
+            $this->refreshRequired = true;
+        }
+
+        $this->inner->invalidate($rejectedIdentity);
     }
 
     private function requiresRefresh(IdentityInterface $identity): bool

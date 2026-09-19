@@ -7,7 +7,11 @@ namespace Smithy\Client;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Smithy\Async\Async;
-use Smithy\Client\Auth\ResolvedAuthScheme;
+use Smithy\Client\Auth\{
+    IdentityInterface,
+    IdentityResolverInterface,
+    ResolvedAuthScheme
+};
 use Smithy\Client\Endpoint\Endpoint;
 use Smithy\Client\Endpoint\EndpointResolverParams;
 use Smithy\Client\Interceptor\InputContext;
@@ -344,7 +348,8 @@ final class ClientPipeline
      * @return array{
      *     RequestInterface,
      *     ResolvedAuthScheme,
-     *     \Smithy\Client\Auth\IdentityInterface
+     *     IdentityResolverInterface,
+     *     IdentityInterface
      * }
      */
     private function prepareAttemptRequest(
@@ -364,9 +369,10 @@ final class ClientPipeline
                 $config,
                 $preference
             );
-        $identity = $resolvedAuthScheme
+        $identityResolver = $resolvedAuthScheme
             ->scheme
-            ->getIdentityResolver($config)
+            ->getIdentityResolver($config);
+        $identity = $identityResolver
             ->resolveIdentity($resolvedAuthScheme->identityProperties)
             ->unwrap();
         $endpoint = $this->resolveEndpoint($operation, $input, $config);
@@ -380,9 +386,10 @@ final class ClientPipeline
                 $preference
             );
         if ($signingAuthScheme->scheme !== $resolvedAuthScheme->scheme) {
-            $identity = $signingAuthScheme
+            $identityResolver = $signingAuthScheme
                 ->scheme
-                ->getIdentityResolver($config)
+                ->getIdentityResolver($config);
+            $identity = $identityResolver
                 ->resolveIdentity($signingAuthScheme->identityProperties)
                 ->unwrap();
         }
@@ -394,7 +401,12 @@ final class ClientPipeline
         $request = $this->applyEndpointHeaders($request, $endpoint);
         $request = $this->applyOverrideHeaders($request, $overrides);
 
-        return [$request, $signingAuthScheme, $identity];
+        return [
+            $request,
+            $signingAuthScheme,
+            $identityResolver,
+            $identity
+        ];
     }
 
     /**
@@ -418,6 +430,8 @@ final class ClientPipeline
         $error = null;
         $respCtx = null;
         $request = $reqCtx->request;
+        $identity = null;
+        $identityResolver = null;
 
         try {
             $interceptor->readBeforeAttempt($reqCtx);
@@ -442,7 +456,12 @@ final class ClientPipeline
 
         try {
             $config = $reqCtx->config;
-            [$request, $signingAuthScheme, $identity] =
+            [
+                $request,
+                $signingAuthScheme,
+                $identityResolver,
+                $identity
+            ] =
                 $this->prepareAttemptRequest(
                     $reqCtx->operation,
                     $reqCtx->input,
@@ -516,7 +535,9 @@ final class ClientPipeline
                 $reqCtx->config,
                 $request,
                 $response,
-                $output
+                $output,
+                $identity,
+                $identityResolver
             );
 
             // This hook runs even when deserialization fails.
@@ -542,7 +563,9 @@ final class ClientPipeline
                 $reqCtx->config,
                 $request,
                 $response,
-                $output
+                $output,
+                $identity,
+                $identityResolver
             );
         }
 
@@ -572,7 +595,12 @@ final class ClientPipeline
             $attemptRequest = $request;
             $response = null;
             try {
-                [$attemptRequest, $signingAuthScheme, $identity] =
+                [
+                    $attemptRequest,
+                    $signingAuthScheme,
+                    $identityResolver,
+                    $identity
+                ] =
                     $this->prepareAttemptRequest(
                         $operation,
                         $input,

@@ -9,33 +9,19 @@ namespace Smithy\Client\Auth;
  */
 final class IdentityResolverRegistration
 {
-    /**
-     * @param null|callable(): void $invalidator Optional invalidation hook for
-     *                                          chain-level refresh events.
-     */
     public function __construct(
         public readonly IdentityResolverInterface $resolver,
         public readonly ResolvedIdentityMetadata $metadata,
-        public readonly bool $terminal = false,
-        private readonly mixed $invalidator = null
-    )
-    {
-        if ($invalidator !== null && !\is_callable($invalidator)) {
-            throw new \InvalidArgumentException(
-                'Identity resolver invalidator must be callable.'
-            );
-        }
-    }
+        public readonly bool $terminal = false
+    ) {}
 
     /**
-     * Run the invalidation hook when one is registered.
+     * Forward a rejected identity to the registered resolver.
      *
      * @return void
      */
-    public function invalidate(): void
+    public function invalidate(IdentityInterface $rejectedIdentity): void
     {
-        if ($this->invalidator !== null) {
-            ($this->invalidator)();
-        }
+        $this->resolver->invalidate($rejectedIdentity);
     }
 }

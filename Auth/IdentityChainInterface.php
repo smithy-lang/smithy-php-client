@@ -14,16 +14,12 @@ namespace Smithy\Client\Auth;
  */
 interface IdentityChainInterface extends IdentityResolverInterface
 {
-    /**
-     * Invalidate any chain-level caches or registered refresh hooks.
-     *
-     * @return void
-     */
-    public function invalidate(): void;
+    /** @inheritDoc */
+    public function invalidate(IdentityInterface $rejectedIdentity): void;
 
     /**
      * Metadata for the most recent successful resolution, or null when the
-     * chain has not yet resolved an identity or has been invalidated.
+     * chain has not yet resolved an identity.
      */
     public function getLastResolvedMetadata(): ?ResolvedIdentityMetadata;
 }

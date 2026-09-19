@@ -23,4 +23,14 @@ interface IdentityResolverInterface
      * @throws \Throwable On unexpected or unrecoverable failure.
      */
     public function resolveIdentity(array $properties = []): IdentityResult;
+
+    /**
+     * Invalidate an identity rejected by a service if it is still current.
+     *
+     * Resolvers without mutable identity state should implement this as a
+     * no-op.
+     *
+     * @return void
+     */
+    public function invalidate(IdentityInterface $rejectedIdentity): void;
 }

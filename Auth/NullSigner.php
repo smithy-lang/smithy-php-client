@@ -31,8 +31,11 @@ final class NullSigner implements SignerInterface
         RequestInterface $request,
         IdentityInterface $identity,
         array $properties = []
-    ): RequestInterface
+    ): SignerResult
     {
-        return $request;
+        return new SignerResult($request);
     }
+
+    /** @inheritDoc */
+    public function close(): void {}
 }

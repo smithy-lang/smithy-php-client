@@ -28,7 +28,7 @@ final class HttpBearerAuthSigner implements SignerInterface
         RequestInterface $request,
         IdentityInterface $identity,
         array $properties = []
-    ): RequestInterface
+    ): SignerResult
     {
         if (!$identity instanceof BearerToken) {
             throw new \InvalidArgumentException(
@@ -44,9 +44,14 @@ final class HttpBearerAuthSigner implements SignerInterface
             );
         }
 
-        return $request->withHeader(
-            'Authorization',
-            'Bearer ' . $identity->token
+        return new SignerResult(
+            $request->withHeader(
+                'Authorization',
+                'Bearer ' . $identity->token
+            )
         );
     }
+
+    /** @inheritDoc */
+    public function close(): void {}
 }

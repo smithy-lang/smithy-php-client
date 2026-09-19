@@ -10,7 +10,8 @@ use Smithy\Async\Async;
 use Smithy\Client\Auth\{
     IdentityInterface,
     IdentityResolverInterface,
-    ResolvedAuthScheme
+    ResolvedAuthScheme,
+    SignerResult
 };
 use Smithy\Client\Endpoint\Endpoint;
 use Smithy\Client\Endpoint\EndpointResolverParams;
@@ -478,14 +479,11 @@ final class ClientPipeline
 
             $interceptor->readBeforeSigning($reqCtx);
 
-            $request = $signingAuthScheme
-                ->scheme
-                ->getSigner()
-                ->sign(
-                    $request,
-                    $identity,
-                    $signingAuthScheme->signerProperties
-                );
+            $request = $this->signRequest(
+                $signingAuthScheme,
+                $request,
+                $identity
+            )->signedRequest;
             $reqCtx->replaceRequest($request);
 
             $interceptor->readAfterSigning($reqCtx);
@@ -608,14 +606,11 @@ final class ClientPipeline
                         $config,
                         $overrides
                     );
-                $signedRequest = $signingAuthScheme
-                    ->scheme
-                    ->getSigner()
-                    ->sign(
-                        $attemptRequest,
-                        $identity,
-                        $signingAuthScheme->signerProperties
-                    );
+                $signedRequest = $this->signRequest(
+                    $signingAuthScheme,
+                    $attemptRequest,
+                    $identity
+                )->signedRequest;
                 $attemptRequest = $signedRequest;
                 $response = $config->httpClient->sendRequest(
                     $signedRequest,
@@ -749,6 +744,42 @@ final class ClientPipeline
             $operation,
             $response
         );
+    }
+
+    /**
+     * Sign one attempt and always release the attempt-scoped signer.
+     *
+     * A cleanup failure is surfaced after successful signing. If signing
+     * already failed, its error remains authoritative because PHP has no
+     * suppressed-exception mechanism.
+     */
+    private function signRequest(
+        ResolvedAuthScheme $authScheme,
+        RequestInterface $request,
+        IdentityInterface $identity
+    ): SignerResult
+    {
+        $signer = $authScheme->scheme->getSigner();
+        $signingError = null;
+
+        try {
+            return $signer->sign(
+                $request,
+                $identity,
+                $authScheme->signerProperties
+            );
+        } catch (\Throwable $error) {
+            $signingError = $error;
+            throw $error;
+        } finally {
+            try {
+                $signer->close();
+            } catch (\Throwable $cleanupError) {
+                if ($signingError === null) {
+                    throw $cleanupError;
+                }
+            }
+        }
     }
 
     /**

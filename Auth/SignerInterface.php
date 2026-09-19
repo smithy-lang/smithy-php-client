@@ -13,7 +13,8 @@ use Psr\Http\Message\RequestInterface;
  * `modifyBeforeSigning` interceptor has run. Retried attempts sign
  * fresh. Timestamps and nonces are recomputed each time.
  *
- * Implementations return the signed request.
+ * Signers are attempt-scoped. The pipeline closes the signer after each
+ * signing attempt, including when signing fails.
  */
 interface SignerInterface
 {
@@ -26,5 +27,15 @@ interface SignerInterface
         RequestInterface $request,
         IdentityInterface $identity,
         array $properties = []
-    ): RequestInterface;
+    ): SignerResult;
+
+    /**
+     * Release resources owned by this signer.
+     *
+     * Implementations without resources should use a no-op. Calling this
+     * method more than once must be safe.
+     *
+     * @return void
+     */
+    public function close(): void;
 }

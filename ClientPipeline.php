@@ -9,7 +9,6 @@ use Psr\Http\Message\ResponseInterface;
 use Smithy\Async\Async;
 use Smithy\Client\Auth\{
     IdentityInterface,
-    IdentityResolverInterface,
     ResolvedAuthScheme,
     SignerResult
 };
@@ -100,7 +99,6 @@ final class ClientPipeline
 
         $error = null;
         $reqCtx = null;
-        $respCtx = null;
         $outCtx = null;
 
         try {
@@ -151,17 +149,18 @@ final class ClientPipeline
             $attempt = 1;
             while (true) {
                 $reqCtx->replaceRequest($retryRequest);
-                [$respCtx, $outCtx, $error] = $this->executeAttempt(
+                $attemptResult = $this->executeAttempt(
                     $interceptor,
                     $reqCtx,
                     $overrides,
                     $httpOptions
                 );
+                $outCtx = $attemptResult->outputContext;
 
                 $error = $this->completeAttempt(
                     $interceptor,
                     $outCtx,
-                    $error
+                    $attemptResult->error
                 );
 
                 if ($error !== null) {
@@ -208,7 +207,7 @@ final class ClientPipeline
             $input,
             $config,
             $reqCtx?->request,
-            $respCtx?->response,
+            null,
             null
         );
 
@@ -345,13 +344,6 @@ final class ClientPipeline
 
     /**
      * Resolve attempt-scoped auth and endpoint state.
-     *
-     * @return array{
-     *     RequestInterface,
-     *     ResolvedAuthScheme,
-     *     IdentityResolverInterface,
-     *     IdentityInterface
-     * }
      */
     private function prepareAttemptRequest(
         OperationInterface $operation,
@@ -359,7 +351,7 @@ final class ClientPipeline
         RequestInterface $request,
         ClientConfig $config,
         ?RequestOverrideConfig $overrides
-    ): array
+    ): PreparedAttempt
     {
         $preference = $overrides?->authSchemePreference
             ?? $config->authSchemePreference;
@@ -402,34 +394,31 @@ final class ClientPipeline
         $request = $this->applyEndpointHeaders($request, $endpoint);
         $request = $this->applyOverrideHeaders($request, $overrides);
 
-        return [
+        return new PreparedAttempt(
             $request,
             $signingAuthScheme,
             $identityResolver,
             $identity
-        ];
+        );
     }
 
     /**
      * Execute one signed HTTP attempt.
      *
-     * Returns a triple `[responseContext, outputContext, error]`. On success
-     * `error` is null and `outputContext->output` is populated. On failure
-     * `error` is populated and the contexts describe how far the attempt got.
-     *
-     * @return array{0: ?ResponseContext, 1: OutputContext, 2: ?\Throwable}
+     * On success the result error is null and its output context contains the
+     * deserialized output. On failure the error is populated and the output
+     * context describes how far the attempt got.
      */
     private function executeAttempt(
         InterceptorInterface $interceptor,
         RequestContext $reqCtx,
         ?RequestOverrideConfig $overrides,
         ?HttpRequestOptions $httpOptions
-    ): array
+    ): AttemptResult
     {
         $response = null;
         $output = null;
         $error = null;
-        $respCtx = null;
         $request = $reqCtx->request;
         $identity = null;
         $identityResolver = null;
@@ -441,8 +430,7 @@ final class ClientPipeline
         }
 
         if ($error !== null) {
-            return [
-                null,
+            return new AttemptResult(
                 new OutputContext(
                     $reqCtx->operation,
                     $reqCtx->input,
@@ -452,24 +440,21 @@ final class ClientPipeline
                     null
                 ),
                 $error
-            ];
+            );
         }
 
         try {
             $config = $reqCtx->config;
-            [
+            $prepared = $this->prepareAttemptRequest(
+                $reqCtx->operation,
+                $reqCtx->input,
                 $request,
-                $signingAuthScheme,
-                $identityResolver,
-                $identity
-            ] =
-                $this->prepareAttemptRequest(
-                    $reqCtx->operation,
-                    $reqCtx->input,
-                    $request,
-                    $config,
-                    $overrides
-                );
+                $config,
+                $overrides
+            );
+            $request = $prepared->request;
+            $identityResolver = $prepared->identityResolver;
+            $identity = $prepared->identity;
             $reqCtx->replaceRequest($request);
 
             $request = $interceptor->modifyBeforeSigning($reqCtx);
@@ -480,7 +465,7 @@ final class ClientPipeline
             $interceptor->readBeforeSigning($reqCtx);
 
             $request = $this->signRequest(
-                $signingAuthScheme,
+                $prepared->authScheme,
                 $request,
                 $identity
             )->signedRequest;
@@ -567,7 +552,7 @@ final class ClientPipeline
             );
         }
 
-        return [$respCtx, $outCtx, $error];
+        return new AttemptResult($outCtx, $error);
     }
 
     private function executeWithoutInterceptors(
@@ -593,23 +578,18 @@ final class ClientPipeline
             $attemptRequest = $request;
             $response = null;
             try {
-                [
-                    $attemptRequest,
-                    $signingAuthScheme,
-                    $identityResolver,
-                    $identity
-                ] =
-                    $this->prepareAttemptRequest(
-                        $operation,
-                        $input,
-                        $request,
-                        $config,
-                        $overrides
-                    );
+                $prepared = $this->prepareAttemptRequest(
+                    $operation,
+                    $input,
+                    $request,
+                    $config,
+                    $overrides
+                );
+                $attemptRequest = $prepared->request;
                 $signedRequest = $this->signRequest(
-                    $signingAuthScheme,
+                    $prepared->authScheme,
                     $attemptRequest,
-                    $identity
+                    $prepared->identity
                 )->signedRequest;
                 $attemptRequest = $signedRequest;
                 $response = $config->httpClient->sendRequest(

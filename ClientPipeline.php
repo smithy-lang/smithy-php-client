@@ -26,6 +26,7 @@ use Smithy\Core\Shape\OperationInterface;
 use Smithy\Http\Client\Exception\HttpException;
 use Smithy\Http\Client\HttpRequestOptions;
 use Smithy\Http\Message\{
+    HttpMessageValidator,
     Request as SmithyRequest,
     RequestStreamInterface
 };
@@ -311,8 +312,11 @@ final class ClientPipeline
 
         $rawHeaders = [];
         foreach ($headers as $name => $value) {
+            $value = (string) $value;
+            HttpMessageValidator::validateHeaderName($name);
+            HttpMessageValidator::validateHeaderValue($value);
             $lower = \strtolower($name);
-            $rawHeaders[$lower] = [$name, [(string) $value]];
+            $rawHeaders[$lower] = [$name, [$value]];
         }
 
         if ($request instanceof SmithyRequest) {

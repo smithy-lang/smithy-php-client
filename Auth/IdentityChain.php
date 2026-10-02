@@ -107,6 +107,10 @@ final class IdentityChain implements IdentityChainInterface
             $result = $registration->resolver->resolveIdentity($properties);
             $identity = $result->identity;
             if ($identity === null) {
+                if ($registration->terminal) {
+                    return $result;
+                }
+
                 $failures[] = $registration->metadata->providerName
                     . ': '
                     . $result->error;

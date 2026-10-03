@@ -16,12 +16,9 @@ namespace Smithy\Client\Retry;
  * On success, the pipeline calls {@see recordSuccess()} so the strategy
  * can restore capacity to its token bucket.
  *
- * Implementations:
- *  - {@see NoRetryStrategy} single attempt, never retries.
- *  - `Aws\Core\Retry\StandardRetryStrategy` (aws-sdk-php) exponential
- *    backoff with jitter and a token-bucket circuit breaker.
- *  - `Aws\Core\Retry\AdaptiveRetryStrategy` (aws-sdk-php) adds
- *    client-side rate limiting on top of standard.
+ * Smithy PHP provides {@see NoRetryStrategy} as an explicit single-attempt
+ * implementation. Integrations can provide retrying strategies by
+ * implementing this interface.
  */
 interface RetryStrategyInterface
 {

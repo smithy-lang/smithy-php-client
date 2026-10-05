@@ -146,6 +146,7 @@ final class ClientPipeline
                 $config->retryScope,
                 $requestFlags
             );
+            $strategyMaxAttempts = $config->retryStrategy->maxAttempts();
 
             $attempt = 1;
             while (true) {
@@ -178,6 +179,9 @@ final class ClientPipeline
                         );
                     } catch (TokenAcquisitionFailedException $e) {
                         Async::delay($e->delay);
+                        break;
+                    }
+                    if ($attempt >= $strategyMaxAttempts) {
                         break;
                     }
 
@@ -576,6 +580,7 @@ final class ClientPipeline
             $config->retryScope,
             $requestFlags
         );
+        $strategyMaxAttempts = $config->retryStrategy->maxAttempts();
 
         $attempt = 1;
         while (true) {
@@ -615,6 +620,9 @@ final class ClientPipeline
                         $retryState,
                         $error
                     );
+                    if ($attempt >= $strategyMaxAttempts) {
+                        throw $error;
+                    }
                     if (!self::prepareRequestForRetry(
                         $attemptRequest,
                         $response,

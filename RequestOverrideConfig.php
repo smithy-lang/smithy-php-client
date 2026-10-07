@@ -242,11 +242,6 @@ final readonly class RequestOverrideConfig
                 'timeout',
                 $defaults->timeout
             ),
-            followRedirects: self::boolOption(
-                $options,
-                self::redirectOption($options),
-                $defaults->followRedirects
-            ),
             proxy: self::nullableStringOption(
                 $options,
                 'proxy',
@@ -366,8 +361,6 @@ final readonly class RequestOverrideConfig
     {
         $known = [
             'timeout' => true,
-            'allow_redirects' => true,
-            'follow_redirects' => true,
             'proxy' => true,
             'decode_content' => true,
             'trailers' => true,
@@ -387,24 +380,6 @@ final readonly class RequestOverrideConfig
                 );
             }
         }
-
-        if (isset($options['allow_redirects'])
-            && isset($options['follow_redirects'])
-        ) {
-            throw new \InvalidArgumentException(
-                self::HTTP
-                . ' cannot contain both allow_redirects and '
-                . 'follow_redirects.'
-            );
-        }
-    }
-
-    /** @param array<string, mixed> $options */
-    private static function redirectOption(array $options): string
-    {
-        return isset($options['allow_redirects'])
-            ? 'allow_redirects'
-            : 'follow_redirects';
     }
 
     /** @param array<string, mixed> $options */

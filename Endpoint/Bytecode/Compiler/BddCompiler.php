@@ -24,7 +24,7 @@ use Smithy\Client\Endpoint\Bytecode\RulesFunctionInterface;
  *     condition program to the bytecode stream.
  *  3. Reserve result slot zero for the implicit `NoMatchRule`, then emit
  *     each modeled endpoint or error result.
- *  4. Decode the serialized BDD node table into contiguous
+ *  4. Decode and validate the serialized BDD node table as contiguous
  *     `[condition, high, low]` triples.
  *
  * The compiler also applies unambiguous peephole fusions, including
@@ -100,6 +100,8 @@ final class BddCompiler
      * compiler instance can safely compile multiple endpoint rulesets.
      *
      * @param array<string, mixed> $trait Raw `endpointBdd` trait value.
+     *
+     * @throws \InvalidArgumentException If the BDD graph is malformed.
      */
     public function compile(array $trait): Bytecode
     {
@@ -166,6 +168,13 @@ final class BddCompiler
             (string) ($trait['nodes'] ?? ''),
             (int) ($trait['nodeCount'] ?? 0)
         );
+        $bddRoot = (int) ($trait['root'] ?? 0);
+        self::validateBddGraph(
+            $bddNodes,
+            $bddRoot,
+            \count($conditionTypes),
+            \count($resultOffsets)
+        );
 
         return new Bytecode(
             code: $code,
@@ -174,7 +183,7 @@ final class BddCompiler
             registers: $this->registerDefs,
             inputRegisterMap: $inputRegisterMap,
             bddNodes: $bddNodes,
-            bddRoot: (int) ($trait['root'] ?? 0),
+            bddRoot: $bddRoot,
             conditionOffsets: $conditionOffsets,
             resultOffsets: $resultOffsets,
             conditionTypes: $conditionTypes,
@@ -193,6 +202,14 @@ final class BddCompiler
      */
     public static function decodeNodes(string $base64, int $nodeCount): array
     {
+        if ($nodeCount < 0
+            || $nodeCount >= Bytecode::RESULT_OFFSET
+        ) {
+            throw new \InvalidArgumentException(
+                "Invalid BDD node count: {$nodeCount}"
+            );
+        }
+
         $bytes = \base64_decode($base64, true);
         if ($bytes === false) {
             throw new \InvalidArgumentException('Invalid base64 BDD node blob');
@@ -218,6 +235,160 @@ final class BddCompiler
         }
 
         return $out;
+    }
+
+    /**
+     * Validate BDD indexes, references, and graph structure.
+     *
+     * @param list<int> $nodes
+     */
+    private static function validateBddGraph(
+        array $nodes,
+        int $root,
+        int $conditionCount,
+        int $resultCount
+    ): void
+    {
+        $nodeCount = \intdiv(\count($nodes), 3);
+        if ($root < -1) {
+            throw new \InvalidArgumentException(
+                "BDD root reference cannot be complemented: {$root}"
+            );
+        }
+        self::validateBddReference(
+            $root,
+            $nodeCount,
+            $resultCount,
+            'BDD root'
+        );
+
+        for ($nodeIndex = 1; $nodeIndex < $nodeCount; $nodeIndex++) {
+            $base = $nodeIndex * 3;
+            $conditionIndex = $nodes[$base];
+            if ($conditionIndex < 0
+                || $conditionIndex >= $conditionCount
+            ) {
+                throw new \InvalidArgumentException(
+                    "BDD node {$nodeIndex} has invalid condition index "
+                        . "{$conditionIndex} (condition count: "
+                        . "{$conditionCount})"
+                );
+            }
+
+            self::validateBddReference(
+                $nodes[$base + 1],
+                $nodeCount,
+                $resultCount,
+                "BDD node {$nodeIndex} high"
+            );
+            self::validateBddReference(
+                $nodes[$base + 2],
+                $nodeCount,
+                $resultCount,
+                "BDD node {$nodeIndex} low"
+            );
+        }
+
+        self::validateAcyclicBdd($nodes, $nodeCount);
+    }
+
+    /**
+     * Validate a terminal, node, or result reference.
+     */
+    private static function validateBddReference(
+        int $reference,
+        int $nodeCount,
+        int $resultCount,
+        string $context
+    ): void
+    {
+        if (Bytecode::isTerminal($reference)) {
+            return;
+        }
+
+        if (Bytecode::isNodeReference($reference)) {
+            $nodeIndex = \abs($reference) - 1;
+            if ($nodeIndex >= $nodeCount) {
+                throw new \InvalidArgumentException(
+                    "{$context} reference {$reference} points to "
+                        . "non-existent node {$nodeIndex} (node count: "
+                        . "{$nodeCount})"
+                );
+            }
+
+            return;
+        }
+
+        if (Bytecode::isResultReference($reference)) {
+            $resultIndex = $reference - Bytecode::RESULT_OFFSET;
+            if ($resultIndex >= $resultCount) {
+                throw new \InvalidArgumentException(
+                    "{$context} reference {$reference} points to "
+                        . "non-existent result {$resultIndex} (result count: "
+                        . "{$resultCount})"
+                );
+            }
+
+            return;
+        }
+
+        throw new \InvalidArgumentException(
+            "{$context} has invalid reference: {$reference}"
+        );
+    }
+
+    /**
+     * Reject cycles across normal and complemented node references.
+     *
+     * @param list<int> $nodes
+     */
+    private static function validateAcyclicBdd(
+        array $nodes,
+        int $nodeCount
+    ): void
+    {
+        $states = \array_fill(0, $nodeCount, 0);
+        for ($start = 1; $start < $nodeCount; $start++) {
+            if ($states[$start] !== 0) {
+                continue;
+            }
+
+            /** @var list<array{int, int}> $stack */
+            $stack = [[$start, 0]];
+            while ($stack !== []) {
+                $frameIndex = \count($stack) - 1;
+                $nodeIndex = $stack[$frameIndex][0];
+                if ($states[$nodeIndex] === 0) {
+                    $states[$nodeIndex] = 1;
+                }
+
+                $edgeIndex = $stack[$frameIndex][1];
+                if ($edgeIndex >= 2) {
+                    $states[$nodeIndex] = 2;
+                    \array_pop($stack);
+
+                    continue;
+                }
+                $stack[$frameIndex][1]++;
+
+                $reference =
+                    $nodes[$nodeIndex * 3 + 1 + $edgeIndex];
+                if (!Bytecode::isNodeReference($reference)) {
+                    continue;
+                }
+
+                $targetIndex = \abs($reference) - 1;
+                if ($states[$targetIndex] === 1) {
+                    throw new \InvalidArgumentException(
+                        "BDD contains a cycle from node {$nodeIndex} "
+                            . "to node {$targetIndex}"
+                    );
+                }
+                if ($states[$targetIndex] === 0) {
+                    $stack[] = [$targetIndex, 0];
+                }
+            }
+        }
     }
 
     /**

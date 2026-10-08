@@ -224,3 +224,7 @@ public function getPluginPhase(): PluginPhase;
 
 Plugin instances can be shared by clients and calls. Implementations should
 be immutable or otherwise safe for concurrent use.
+
+## Design
+
+See [Plugin Design](../../../docs/design/client/plugin/client-plugin-design.md).

@@ -91,6 +91,10 @@ This package builds on `smithy/async`, `smithy/core`, `smithy/http`,
 `smithy/protocol`, and `psr/http-message`. Waiter path expressions use
 `mtdowling/jmespath.php`.
 
+## Design
+
+See [Client Runtime Design](../../docs/design/client/client-runtime-design.md).
+
 ## Contributing
 
 Run the component tests from the monorepo root:

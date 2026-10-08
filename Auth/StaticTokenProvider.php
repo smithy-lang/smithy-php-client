@@ -15,6 +15,7 @@ final readonly class StaticTokenProvider implements IdentityResolverInterface
      * Create a static token provider.
      */
     public function __construct(
+        #[\SensitiveParameter]
         BearerToken|string $token,
         ?float $expirationTime = null
     )

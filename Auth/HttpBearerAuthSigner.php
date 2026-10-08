@@ -47,7 +47,7 @@ final class HttpBearerAuthSigner implements SignerInterface
         return new SignerResult(
             $request->withHeader(
                 'Authorization',
-                'Bearer ' . $identity->token
+                'Bearer ' . $identity->getToken()
             )
         );
     }

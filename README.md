@@ -81,6 +81,20 @@ $output = $client->call('GetForecast', [
 ]);
 ```
 
+Modeled paginated operations return a lazy paginator that yields one
+`StructDocument` per response page:
+
+```php
+$pages = $client->paginate('ListForecasts', [
+    'city' => 'Raleigh',
+    'pageSize' => 25,
+]);
+
+foreach ($pages as $page) {
+    $forecasts = $page->getMember('forecasts')?->asList() ?? [];
+}
+```
+
 Provider subclasses register protocols, authentication schemes, endpoint
 functions, and schema traits through an internal `DynamicClientRuntime`
 returned by their protected runtime hook.

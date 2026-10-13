@@ -8,7 +8,6 @@ use Smithy\Client\Interceptor\{
     CallContext,
     InputContext
 };
-use Smithy\Client\Pagination\PaginatedRequestInterface;
 use Smithy\Client\Pagination\Paginator;
 use Smithy\Client\Plugin\{
     PluginCollection
@@ -124,7 +123,7 @@ abstract class AbstractClient implements ClientInterface
      */
     protected function createPaginator(
         OperationInterface $operation,
-        PaginatedRequestInterface $input
+        SerializableStructInterface $input
     ): Paginator
     {
         return new Paginator($this, $operation, $input);

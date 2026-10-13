@@ -19,6 +19,7 @@ use Smithy\Client\Endpoint\{
     EndpointResolverInterface
 };
 use Smithy\Client\Interceptor\InterceptorChain;
+use Smithy\Client\Pagination\Paginator;
 use Smithy\Client\Plugin\{
     HttpChecksumPlugin,
     PluginCollection,
@@ -210,30 +211,16 @@ class DynamicClient extends AbstractClient
     {
         $operation = $this->expectOperation($operationName);
         $this->assertPreviewSupported($operation);
-        $inputOverrides = [];
-        if (\is_array($input)) {
-            foreach ($input as $name => $value) {
-                if (\is_string($name)
-                    && \str_starts_with($name, '@')
-                ) {
-                    $inputOverrides[$name] = $value;
-                    unset($input[$name]);
-                }
-            }
-        }
-        if ($inputOverrides !== []) {
-            $overrides = $overrides === []
-                ? $inputOverrides
-                : [...$inputOverrides, ...$overrides];
-        }
+        [$input, $requestOverrides] = self::prepareInput(
+            $input,
+            $overrides
+        );
 
         $modeledInput = $operation->createInputFromValue($input);
         $output = $this->executeOperation(
             $operation,
             $modeledInput,
-            $overrides === []
-                ? null
-                : RequestOverrideConfig::fromArray($overrides)
+            $requestOverrides
         );
         if ($output->getSchema()->id !== $operation->getOutputSchema()->id) {
             throw new \LogicException(
@@ -248,6 +235,39 @@ class DynamicClient extends AbstractClient
                 $output,
                 $operation->getOutputSchema()
             );
+    }
+
+    /**
+     * Create a paginator for a modeled operation by name.
+     *
+     * @param array<string, mixed>|DocumentInterface|null $input
+     * @param array<string, mixed> $overrides
+     *
+     * @return Paginator<StructDocument>
+     * @throws \InvalidArgumentException When operation or overrides are invalid.
+     * @throws \LogicException When the operation is not paginated or uses
+     *                         unsupported streaming.
+     */
+    public function paginate(
+        string $operationName,
+        array|DocumentInterface|null $input = null,
+        array $overrides = []
+    ): Paginator
+    {
+        $operation = $this->expectOperation($operationName);
+        $this->assertPreviewSupported($operation);
+        [$input, $requestOverrides] = self::prepareInput(
+            $input,
+            $overrides
+        );
+        $paginator = $this->createPaginator(
+            $operation,
+            $operation->createInputFromValue($input)
+        );
+
+        return $requestOverrides === null
+            ? $paginator
+            : $paginator->withRequestOverrides($requestOverrides);
     }
 
     /**
@@ -349,6 +369,47 @@ class DynamicClient extends AbstractClient
         }
 
         return $operation;
+    }
+
+    /**
+     * Separate request overrides from modeled input members.
+     *
+     * @param array<string, mixed>|DocumentInterface|null $input
+     * @param array<string, mixed> $overrides
+     *
+     * @return array{
+     *     0: array<string, mixed>|DocumentInterface|null,
+     *     1: RequestOverrideConfig|null
+     * }
+     */
+    private static function prepareInput(
+        array|DocumentInterface|null $input,
+        array $overrides
+    ): array
+    {
+        $inputOverrides = [];
+        if (\is_array($input)) {
+            foreach ($input as $name => $value) {
+                if (\is_string($name)
+                    && \str_starts_with($name, '@')
+                ) {
+                    $inputOverrides[$name] = $value;
+                    unset($input[$name]);
+                }
+            }
+        }
+        if ($inputOverrides !== []) {
+            $overrides = $overrides === []
+                ? $inputOverrides
+                : [...$inputOverrides, ...$overrides];
+        }
+
+        return [
+            $input,
+            $overrides === []
+                ? null
+                : RequestOverrideConfig::fromArray($overrides)
+        ];
     }
 
     /**

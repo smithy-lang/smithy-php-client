@@ -24,7 +24,7 @@ final class Paginator implements \IteratorAggregate
     private readonly array $outputTokenPath;
     /** @var list<Schema> */
     private readonly array $itemsPath;
-    private readonly bool $hasPageSize;
+    private readonly PaginationInput $input;
     private ?int $maxItems = null;
     private ?RequestOverrideConfig $requestOverrides = null;
 
@@ -37,7 +37,7 @@ final class Paginator implements \IteratorAggregate
     public function __construct(
         private readonly ClientInterface $client,
         private readonly OperationInterface $operation,
-        private readonly PaginatedRequestInterface $input
+        SerializableStructInterface $input
     ) {
         $pagination = $operation->getSchema()->getExtension(
             PaginationSchemaExtensionProvider::key()
@@ -63,9 +63,11 @@ final class Paginator implements \IteratorAggregate
                 $operation->getId(),
                 'items'
             );
-        $pageSize = $pagination->pageSize;
-        $this->hasPageSize = \is_string($pageSize)
-            && $pageSize !== '';
+        $this->input = PaginationInput::create(
+            $input,
+            $operation,
+            $pagination
+        );
     }
 
     /**
@@ -90,10 +92,7 @@ final class Paginator implements \IteratorAggregate
             );
         }
 
-        if (!$this->hasPageSize
-            || !$this->input
-                instanceof PageSizePaginatedRequestInterface
-        ) {
+        if (!$this->input->hasPageSize()) {
             throw new \LogicException(
                 "Operation {$this->operation->getId()} does not model "
                 . 'a pagination page size.'
@@ -128,33 +127,26 @@ final class Paginator implements \IteratorAggregate
     public function getIterator(): \Traversable
     {
         $input = $this->input;
-        $previousToken = $input->getPaginationToken();
+        $previousToken = $input->getToken();
         $hasPreviousToken = !self::isEmptyToken($previousToken);
         $remaining = $this->maxItems;
-        $pageSize = $input
-            instanceof PageSizePaginatedRequestInterface
-                ? $input->getPaginationPageSize()
-                : null;
+        $pageSize = $input->getPageSize();
 
         while (true) {
             $requestInput = $input;
-            if ($remaining !== null
-                && $requestInput
-                    instanceof PageSizePaginatedRequestInterface
-            ) {
+            if ($remaining !== null && $requestInput->hasPageSize()) {
                 $requestPageSize = $pageSize === null || $pageSize < 1
                     ? $remaining
                     : \min($pageSize, $remaining);
-                $requestInput =
-                    $requestInput->withPaginationPageSize(
-                        $requestPageSize
-                    );
+                $requestInput = $requestInput->withPageSize(
+                    $requestPageSize
+                );
             }
 
             /** @var TOutput $output */
             $output = $this->client->executeOperation(
                 $this->operation,
-                $requestInput,
+                $requestInput->getInput(),
                 $this->requestOverrides
             );
 
@@ -177,7 +169,7 @@ final class Paginator implements \IteratorAggregate
                 return;
             }
 
-            $input = $requestInput->withPaginationToken($token);
+            $input = $requestInput->withToken($token);
             $previousToken = $token;
             $hasPreviousToken = true;
         }

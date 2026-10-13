@@ -34,6 +34,10 @@ use Smithy\Core\Shape\{
  */
 final class DocumentFactory
 {
+    private const CLIENT_OPTIONAL_TRAIT = 'smithy.api#clientOptional';
+    private const DEFAULT_TRAIT = 'smithy.api#default';
+    private const INPUT_TRAIT = 'smithy.api#input';
+
     /**
      * Create a schema-backed document.
      *
@@ -83,6 +87,226 @@ final class DocumentFactory
         }
 
         return $document;
+    }
+
+    /**
+     * Create a schema-backed structure from positional member values.
+     *
+     * Missing members are passed through normal client default resolution.
+     *
+     * @param array<int, mixed> $members Positional member values.
+     */
+    public function createStructFromMembers(
+        Schema $schema,
+        array $members
+    ): StructDocument
+    {
+        $target = $schema->resolveTarget();
+        foreach ($target->getMembersByIndex() as $index => $member) {
+            $memberValue = $members[$index] ?? null;
+            $memberPath = '$.' . $member->memberName;
+            if ($memberValue !== null) {
+                $members[$index] = $this->materializeDecodedValue(
+                    $member,
+                    $memberValue,
+                    $memberPath
+                );
+                continue;
+            }
+            if (!$this->shouldApplyDefault($target, $member)) {
+                continue;
+            }
+
+            $members[$index] = $this->coerceDefault(
+                $member,
+                $this->getDirectTraitValue(
+                    $member,
+                    self::DEFAULT_TRAIT
+                ),
+                $memberPath
+            );
+        }
+
+        return $this->createStructDocument($schema, $members);
+    }
+
+    /**
+     * Apply client defaults recursively to a decoded runtime value.
+     */
+    private function materializeDecodedValue(
+        Schema $schema,
+        mixed $value,
+        string $path
+    ): mixed
+    {
+        return match ($schema->type) {
+            ShapeType::Structure->value =>
+                $this->materializeDecodedStructure(
+                    $schema,
+                    $value,
+                    $path
+                ),
+            ShapeType::Union->value =>
+                $this->materializeDecodedUnion(
+                    $schema,
+                    $value,
+                    $path
+                ),
+            ShapeType::List_->value =>
+                $this->materializeDecodedList(
+                    $schema,
+                    $value,
+                    $path
+                ),
+            ShapeType::Map->value =>
+                $this->materializeDecodedMap(
+                    $schema,
+                    $value,
+                    $path
+                ),
+            default => $value
+        };
+    }
+
+    /**
+     * Apply client defaults to a decoded structure.
+     */
+    private function materializeDecodedStructure(
+        Schema $schema,
+        mixed $value,
+        string $path
+    ): mixed
+    {
+        if (!$value instanceof SerializableStructInterface) {
+            return $value;
+        }
+
+        $target = $schema->resolveTarget();
+        if ($value->getSchema()->id !== $target->id) {
+            throw $this->invalid($path, $target->id, $value);
+        }
+
+        $members = \array_fill(0, $target->getMemberCount(), null);
+        foreach ($target->getMembersByIndex() as $index => $member) {
+            $memberValue = $value->getMemberValue($member);
+            $memberPath = $path . '.' . $member->memberName;
+            if ($memberValue !== null) {
+                $members[$index] = $this->materializeDecodedValue(
+                    $member,
+                    $memberValue,
+                    $memberPath
+                );
+            } elseif ($this->shouldApplyDefault($target, $member)) {
+                $members[$index] = $this->coerceDefault(
+                    $member,
+                    $this->getDirectTraitValue(
+                        $member,
+                        self::DEFAULT_TRAIT
+                    ),
+                    $memberPath
+                );
+            }
+        }
+
+        return $this->createStructDocument($schema, $members);
+    }
+
+    /**
+     * Apply client defaults to a decoded union value.
+     */
+    private function materializeDecodedUnion(
+        Schema $schema,
+        mixed $value,
+        string $path
+    ): mixed
+    {
+        if (!$value instanceof UnionInterface) {
+            return $value;
+        }
+
+        $target = $schema->resolveTarget();
+        if ($value->getSchema()->id !== $target->id) {
+            throw $this->invalid($path, $target->id, $value);
+        }
+
+        $tag = $value->tag();
+        $member = $target->getMember($tag);
+        $memberValue = $value->value();
+        if ($member === null || $memberValue === null) {
+            return $value;
+        }
+
+        return UnionDocument::create(
+            $schema,
+            $tag,
+            $this->materializeDecodedValue(
+                $member,
+                $memberValue,
+                $path . '.' . $tag
+            )
+        );
+    }
+
+    /**
+     * Apply client defaults to decoded list members.
+     */
+    private function materializeDecodedList(
+        Schema $schema,
+        mixed $value,
+        string $path
+    ): mixed
+    {
+        if (!\is_array($value) || !\array_is_list($value)) {
+            return $value;
+        }
+
+        $member = $schema->resolveTarget()->getListMember();
+        if ($member === null) {
+            return $value;
+        }
+
+        foreach ($value as $index => $item) {
+            if ($item !== null) {
+                $value[$index] = $this->materializeDecodedValue(
+                    $member,
+                    $item,
+                    $path . '[' . $index . ']'
+                );
+            }
+        }
+
+        return $value;
+    }
+
+    /**
+     * Apply client defaults to decoded map values.
+     */
+    private function materializeDecodedMap(
+        Schema $schema,
+        mixed $value,
+        string $path
+    ): mixed
+    {
+        if (!\is_array($value)) {
+            return $value;
+        }
+
+        $member = $schema->resolveTarget()->getMapValue();
+        if ($member === null) {
+            return $value;
+        }
+
+        foreach ($value as $key => $entry) {
+            if ($entry !== null) {
+                $value[$key] = $this->materializeDecodedValue(
+                    $member,
+                    $entry,
+                    $path . '[' . \var_export((string) $key, true) . ']'
+                );
+            }
+        }
+
+        return $value;
     }
 
     /**
@@ -225,12 +449,12 @@ final class DocumentFactory
                 continue;
             }
 
-            if ($member->hasDirectTraitById('smithy.api#default')) {
-                $members[$index] = $this->coerce(
+            if ($this->shouldApplyDefault($target, $member)) {
+                $members[$index] = $this->coerceDefault(
                     $member,
                     $this->getDirectTraitValue(
                         $member,
-                        'smithy.api#default'
+                        self::DEFAULT_TRAIT
                     ),
                     $memberPath
                 );
@@ -242,6 +466,43 @@ final class DocumentFactory
         }
 
         return $this->createStructDocument($schema, $members);
+    }
+
+    /**
+     * Return whether a missing member receives its modeled default.
+     */
+    private function shouldApplyDefault(
+        Schema $container,
+        Schema $member
+    ): bool
+    {
+        return $member->hasDirectTraitById(self::DEFAULT_TRAIT)
+            && !$container->hasTraitById(self::INPUT_TRAIT)
+            && !$member->hasTraitById(self::CLIENT_OPTIONAL_TRAIT);
+    }
+
+    /**
+     * Coerce a modeled default from its JSON AST representation.
+     */
+    private function coerceDefault(
+        Schema $schema,
+        mixed $value,
+        string $path
+    ): mixed
+    {
+        if ($schema->type === ShapeType::Blob->value
+            && \is_string($value)
+        ) {
+            $decoded = \base64_decode($value, true);
+            if ($decoded === false) {
+                throw new InvalidShapeValueException(
+                    "Invalid base64 blob default at {$path}."
+                );
+            }
+            $value = new BlobValue($decoded);
+        }
+
+        return $this->coerce($schema, $value, $path);
     }
 
     /**

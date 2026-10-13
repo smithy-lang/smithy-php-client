@@ -195,7 +195,7 @@ final class DynamicOperation implements OperationInterface
      */
     public function createInput(array $members): SerializableStructInterface
     {
-        return StructDocument::fromMembers(
+        return $this->documentFactory->createStructFromMembers(
             $this->inputSchema,
             $members
         );
@@ -221,7 +221,7 @@ final class DynamicOperation implements OperationInterface
      */
     public function createOutput(array $members): SerializableStructInterface
     {
-        return StructDocument::fromMembers(
+        return $this->documentFactory->createStructFromMembers(
             $this->outputSchema,
             $members
         );

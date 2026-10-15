@@ -20,6 +20,7 @@ use Smithy\Client\Plugin\{
 };
 use Smithy\Client\Retry\NoRetryStrategy;
 use Smithy\Client\Retry\RetryStrategyInterface;
+use Smithy\Core\Shape\ServiceInterface;
 use Smithy\Http\Client\HttpClientInterface;
 use Smithy\Protocol\ProtocolInterface;
 
@@ -78,6 +79,7 @@ class ClientConfig
      *               executions.
      * @param array<string, mixed> $context Extension bag for
      *                      interceptor state or forward-compatible fields.
+     * @param ServiceInterface|null $service Runtime service metadata.
      * @param PluginState|null $pluginState Internal plugin application state.
      */
     public function __construct(
@@ -91,6 +93,7 @@ class ClientConfig
         string $retryScope = '',
         array $context = [],
         array $authSchemePreference = [],
+        public readonly ?ServiceInterface $service = null,
         ?PluginState $pluginState = null
     )
     {
@@ -126,7 +129,7 @@ class ClientConfig
     }
 
     /**
-     * Register and apply a plugin.
+     * Register a plugin for application when the client is constructed.
      */
     public function withPlugin(PluginInterface $plugin): static
     {
@@ -134,7 +137,7 @@ class ClientConfig
     }
 
     /**
-     * Register and apply plugins.
+     * Register plugins for application when the client is constructed.
      */
     public function withPlugins(PluginInterface ...$plugins): static
     {
@@ -144,20 +147,32 @@ class ClientConfig
     }
 
     /**
-     * Register and apply a collection of plugins.
+     * Register a collection for application when the client is constructed.
      */
     public function withPluginCollection(
         PluginCollection $plugins
     ): static {
-        if ($plugins->isEmpty()
-            && $this->pluginState->plugins->isEmpty()
-        ) {
+        if ($plugins->isEmpty()) {
             return $this;
         }
 
+        $state = $this->pluginState->withPlugins($plugins);
+
+        return $state === $this->pluginState
+            ? $this
+            : $this->withResolvedPluginState($state);
+    }
+
+    /**
+     * Resolve and apply every registered plugin.
+     *
+     * @internal Called after a client attaches its service metadata.
+     */
+    public function resolvePlugins(): static
+    {
         /** @var static */
         return (new PluginResolver())
-            ->resolve($plugins, $this->pluginState)
+            ->resolve(new PluginCollection(), $this->pluginState)
             ->apply($this);
     }
 
@@ -230,6 +245,18 @@ class ClientConfig
         }
 
         return $this->copyWith(['pluginState' => $state]);
+    }
+
+    /**
+     * Create a config associated with runtime service metadata.
+     */
+    public function withService(ServiceInterface $service): static
+    {
+        if ($service === $this->service) {
+            return $this;
+        }
+
+        return $this->copyWith(['service' => $service]);
     }
 
     /**
@@ -406,6 +433,7 @@ class ClientConfig
             $overrides['retryStrategy'] ?? $this->retryStrategy;
         $retryScope = $overrides['retryScope'] ?? $this->retryScope;
         $context = $overrides['context'] ?? $this->context;
+        $service = $overrides['service'] ?? $this->service;
         $pluginState = $overrides['pluginState'] ?? $this->pluginState;
 
         return new static(
@@ -420,6 +448,7 @@ class ClientConfig
             context: $context,
             authSchemePreference: $overrides['authSchemePreference']
                 ?? $this->authSchemePreference,
+            service: $service,
             pluginState: $pluginState
         );
     }
@@ -428,12 +457,8 @@ class ClientConfig
         \Closure $predicate
     ): static {
         $state = $this->pluginState->withPredicate($predicate);
-        $config = $this->withResolvedPluginState($state);
 
-        /** @var static */
-        return (new PluginResolver())
-            ->resolve(new PluginCollection(), $state)
-            ->apply($config);
+        return $this->withResolvedPluginState($state);
     }
 
     private static function toClosure(callable $callable): \Closure

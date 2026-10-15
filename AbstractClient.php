@@ -10,6 +10,7 @@ use Smithy\Client\Interceptor\{
 };
 use Smithy\Client\Pagination\Paginator;
 use Smithy\Client\Plugin\{
+    ModeledBehaviorPlugin,
     PluginCollection
 };
 use Smithy\Client\Waiter\Acceptor;
@@ -45,7 +46,10 @@ abstract class AbstractClient implements ClientInterface
         PluginCollection $plugins = new PluginCollection()
     )
     {
-        $this->config = $plugins->apply($config);
+        $this->config = $config
+            ->withPluginCollection($plugins)
+            ->withPlugin(ModeledBehaviorPlugin::instance())
+            ->resolvePlugins();
         $this->pipeline = new ClientPipeline($this->config);
     }
 

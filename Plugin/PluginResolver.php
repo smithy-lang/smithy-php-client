@@ -19,6 +19,7 @@ final class PluginResolver
     {
         $state = $state->withPlugins($plugins);
         $appliedClasses = $state->appliedClasses;
+        $visitedClasses = [];
         $resolved = [];
         $sequence = 0;
 
@@ -27,6 +28,7 @@ final class PluginResolver
                 $plugin,
                 $state,
                 $appliedClasses,
+                $visitedClasses,
                 $resolved,
                 $sequence
             );
@@ -50,6 +52,7 @@ final class PluginResolver
 
     /**
      * @param array<class-string<PluginInterface>, true> $appliedClasses
+     * @param array<class-string<PluginInterface>, true> $visitedClasses
      * @param list<array{
      *     plugin: PluginInterface,
      *     phase: int,
@@ -60,27 +63,32 @@ final class PluginResolver
         PluginInterface $plugin,
         PluginState $state,
         array &$appliedClasses,
+        array &$visitedClasses,
         array &$resolved,
         int &$sequence
     ): void
     {
         $class = $plugin::class;
-        if (isset($appliedClasses[$class]) || !$state->accepts($plugin)) {
+        if (isset($visitedClasses[$class]) || !$state->accepts($plugin)) {
             return;
         }
+        $visitedClasses[$class] = true;
 
-        $appliedClasses[$class] = true;
-        $resolved[] = [
-            'plugin' => $plugin,
-            'phase' => $plugin->getPluginPhase()->value,
-            'sequence' => $sequence++
-        ];
+        if (!isset($appliedClasses[$class])) {
+            $appliedClasses[$class] = true;
+            $resolved[] = [
+                'plugin' => $plugin,
+                'phase' => $plugin->getPluginPhase()->value,
+                'sequence' => $sequence++
+            ];
+        }
 
         foreach ($plugin->getChildPlugins() as $child) {
             $this->collect(
                 $child,
                 $state,
                 $appliedClasses,
+                $visitedClasses,
                 $resolved,
                 $sequence
             );

@@ -44,8 +44,10 @@ $config = $config
     ->withPlugin(new MetricsPlugin());
 ```
 
-Registration and application return new objects. Existing collections and
-configurations remain unchanged.
+Registration returns a new configuration without applying the plugin.
+Generated and dynamic clients attach their service metadata and resolve all
+registered plugins once during construction. This allows plugins to inspect
+the same service schema in either client projection.
 
 ## Automatic Plugins
 
@@ -98,8 +100,8 @@ List that registration file under the package's Composer `autoload.files`:
 ```
 
 Composer executes the registration file when its autoloader is initialized.
-Registered plugin classes are instantiated once per process and the shared
-instances are applied to each new client.
+Registered plugin classes are instantiated once per process. The shared
+instances are resolved after each new client attaches its service metadata.
 
 Automatic plugins are children of the framework's default plugin. They use
 the same phases, predicates, concrete-class deduplication, and persisted state
@@ -143,9 +145,9 @@ The phases run in this order:
 8. `Last`
 
 Framework and automatic plugins are registered first, followed by user plugins
-and then generated defaults. Within one phase, this means framework and
-automatic behavior is applied first. A user plugin wins a concrete-class
-duplicate with a generated default.
+and shared modeled-behavior defaults. Within one phase, this means framework
+and automatic behavior is applied first. A user plugin wins a concrete-class
+duplicate with a modeled-behavior default.
 
 The first registered instance of each concrete plugin class wins. A plugin
 class is applied at most once as a configuration is copied or reused.

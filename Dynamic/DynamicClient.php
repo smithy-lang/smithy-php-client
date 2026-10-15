@@ -20,11 +20,7 @@ use Smithy\Client\Endpoint\{
 };
 use Smithy\Client\Interceptor\InterceptorChain;
 use Smithy\Client\Pagination\Paginator;
-use Smithy\Client\Plugin\{
-    HttpChecksumPlugin,
-    PluginCollection,
-    RequestCompressionPlugin
-};
+use Smithy\Client\Plugin\PluginCollection;
 use Smithy\Client\Retry\RetryStrategyInterface;
 use Smithy\Core\Model\SmithyModel;
 use Smithy\Core\Serde\{
@@ -80,12 +76,10 @@ class DynamicClient extends AbstractClient
             $errorDiscriminatorTraits
         );
 
-        $plugins = $plugins->merge(new PluginCollection(
-            new RequestCompressionPlugin(),
-            new HttpChecksumPlugin()
-        ));
-
-        parent::__construct($config, $plugins);
+        parent::__construct(
+            $config->withService($this->service),
+            $plugins
+        );
     }
 
     /**

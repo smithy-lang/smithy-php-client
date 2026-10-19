@@ -22,6 +22,7 @@ use Smithy\Client\Interceptor\InterceptorChain;
 use Smithy\Client\Pagination\Paginator;
 use Smithy\Client\Plugin\PluginCollection;
 use Smithy\Client\Retry\RetryStrategyInterface;
+use Smithy\Client\Transport\TransportInterface;
 use Smithy\Core\Model\SmithyModel;
 use Smithy\Core\Serde\{
     SchemaConverter,
@@ -31,8 +32,11 @@ use Smithy\Core\Shape\Document\{
     DocumentInterface,
     StructDocument
 };
-use Smithy\Http\Client\HttpClientInterface;
-use Smithy\Http\Client\CurlClient;
+use Smithy\Http\Client\{
+    CurlClient,
+    HttpClientInterface,
+    HttpClientTransport
+};
 use Smithy\Protocol\{
     ProtocolInterface,
     RpcV2\RpcV2CborProtocol
@@ -102,6 +106,7 @@ class DynamicClient extends AbstractClient
         ?ProtocolInterface $protocol = null,
         array $protocols = [],
         ?HttpClientInterface $httpClient = null,
+        ?TransportInterface $transport = null,
         ?EndpointResolverInterface $endpointResolver = null,
         ?string $endpoint = null,
         array $endpointFunctions = [],
@@ -126,6 +131,7 @@ class DynamicClient extends AbstractClient
             protocol: $protocol,
             protocols: $protocols,
             httpClient: $httpClient,
+            transport: $transport,
             endpointResolver: $endpointResolver,
             endpoint: $endpoint,
             endpointFunctions: $endpointFunctions,
@@ -162,6 +168,7 @@ class DynamicClient extends AbstractClient
         ?string $protocolId,
         ProtocolInterface $protocol,
         ?HttpClientInterface $httpClient,
+        ?TransportInterface $transport,
         EndpointResolverInterface $endpointResolver,
         InterceptorChain $interceptors,
         array $supportedAuthSchemes,
@@ -172,9 +179,18 @@ class DynamicClient extends AbstractClient
         array $context
     ): ClientConfig
     {
+        if ($transport !== null && $httpClient !== null) {
+            throw new \InvalidArgumentException(
+                'Provide either an HTTP client or a transport, not both.'
+            );
+        }
+        $transport ??= new HttpClientTransport(
+            $httpClient ?? new CurlClient()
+        );
+
         return new ClientConfig(
             protocol: $protocol,
-            httpClient: $httpClient ?? new CurlClient(),
+            transport: $transport,
             endpointResolver: $endpointResolver,
             interceptors: $interceptors,
             supportedAuthSchemes: $supportedAuthSchemes,

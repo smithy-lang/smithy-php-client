@@ -207,7 +207,7 @@ configuration and do not change the client configuration used by later
 calls.
 
 Call-scoped plugins run before interceptor `modifyBeforeCall()` hooks. Either
-mechanism can replace the protocol, HTTP client, endpoint resolver, retry
+mechanism can replace the protocol, transport, endpoint resolver, retry
 strategy, authentication behavior, or interceptor chain for that call.
 
 ## Implementing the Interface Directly

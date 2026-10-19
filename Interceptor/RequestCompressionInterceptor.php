@@ -6,9 +6,11 @@ namespace Smithy\Client\Interceptor;
 
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\StreamInterface;
+use Smithy\Client\Transport\TransportRequestInterface;
 use Smithy\Core\Serde\Schema;
 use Smithy\Http\Message\{
     AsyncRequestStreamInterface,
+    HttpTransportRequest,
     Request,
     RequestStreamInterface,
     ResourceRequestStream
@@ -35,7 +37,7 @@ final class RequestCompressionInterceptor extends AbstractInterceptor
      */
     public function modifyBeforeRetryLoop(
         RequestContext $ctx
-    ): RequestInterface
+    ): TransportRequestInterface
     {
         if ($this->disabled) {
             return $ctx->request;
@@ -62,15 +64,19 @@ final class RequestCompressionInterceptor extends AbstractInterceptor
             return $ctx->request;
         }
 
-        $body = $ctx->request->getBody();
-        $encodingValues = $ctx->request->getHeader('Content-Encoding');
+        $transportRequest = HttpTransportRequest::expect($ctx->request);
+        $request = $transportRequest->request;
+        $body = $request->getBody();
+        $encodingValues = $request->getHeader('Content-Encoding');
         $encodingValues[] = $algorithm;
 
         if ($ctx->operation->getInputStreamMember() !== null) {
-            return self::withCompressedBody(
-                $ctx->request,
-                self::compressBody($body),
-                $encodingValues
+            return $transportRequest->withRequest(
+                self::withCompressedBody(
+                    $request,
+                    self::compressBody($body),
+                    $encodingValues
+                )
             );
         }
 
@@ -79,10 +85,12 @@ final class RequestCompressionInterceptor extends AbstractInterceptor
             return $ctx->request;
         }
 
-        return self::withCompressedBody(
-            $ctx->request,
-            self::compressBody($body),
-            $encodingValues
+        return $transportRequest->withRequest(
+            self::withCompressedBody(
+                $request,
+                self::compressBody($body),
+                $encodingValues
+            )
         );
     }
 

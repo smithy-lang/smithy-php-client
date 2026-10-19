@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Auth;
 
-use Psr\Http\Message\RequestInterface;
+use Smithy\Client\Transport\TransportRequestInterface;
 
 /**
- * Sign an HTTP request using a resolved {@see IdentityInterface}.
+ * Sign a transport request using a resolved {@see IdentityInterface}.
  *
  * Called once per attempt from inside the retry loop, after any
  * `modifyBeforeSigning` interceptor has run. Retried attempts sign
@@ -24,7 +24,7 @@ interface SignerInterface
      *                                         endpoint.
      */
     public function sign(
-        RequestInterface $request,
+        TransportRequestInterface $request,
         IdentityInterface $identity,
         array $properties = []
     ): SignerResult;

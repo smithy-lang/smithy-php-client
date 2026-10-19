@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Interceptor;
 
-use Psr\Http\Message\RequestInterface;
-use Psr\Http\Message\ResponseInterface;
 use Smithy\Client\ClientConfig;
+use Smithy\Client\Transport\{
+    TransportRequestInterface,
+    TransportResponseInterface
+};
 use Smithy\Core\Serde\SerializableStructInterface;
 
 /**
@@ -183,7 +185,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     /** @inheritDoc */
     public function modifyBeforeRetryLoop(
         RequestContext $ctx
-    ): RequestInterface
+    ): TransportRequestInterface
     {
         $request = $ctx->request;
         foreach ($this->interceptors as $interceptor) {
@@ -215,7 +217,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     /** @inheritDoc */
     public function modifyBeforeSigning(
         RequestContext $ctx
-    ): RequestInterface
+    ): TransportRequestInterface
     {
         $request = $ctx->request;
         foreach ($this->interceptors as $interceptor) {
@@ -246,7 +248,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     /** @inheritDoc */
     public function modifyBeforeTransmit(
         RequestContext $ctx
-    ): RequestInterface
+    ): TransportRequestInterface
     {
         $request = $ctx->request;
         foreach ($this->interceptors as $interceptor) {
@@ -277,7 +279,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     /** @inheritDoc */
     public function modifyBeforeDeserialization(
         ResponseContext $ctx
-    ): ResponseInterface
+    ): TransportResponseInterface
     {
         $response = $ctx->response;
         foreach ($this->interceptors as $interceptor) {

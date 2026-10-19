@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Interceptor;
 
-use Psr\Http\Message\RequestInterface;
+use Smithy\Client\Transport\TransportRequestInterface;
 use Smithy\Core\Serde\Schema;
 use Smithy\Http\Message\{
     AsyncRequestStreamInterface,
+    HttpTransportRequest,
     Request,
     RequestStreamInterface,
     ResourceRequestStream,
@@ -26,7 +27,7 @@ final class HttpChecksumInterceptor extends AbstractInterceptor
      */
     public function modifyBeforeRetryLoop(
         RequestContext $ctx
-    ): RequestInterface
+    ): TransportRequestInterface
     {
         if (!$ctx->operation->getSchema()->hasTrait(
             Schema::T_HTTP_CHECKSUM_REQUIRED
@@ -34,15 +35,19 @@ final class HttpChecksumInterceptor extends AbstractInterceptor
             return $ctx->request;
         }
 
-        if ($ctx->request->hasHeader('Content-MD5')) {
+        $request = HttpTransportRequest::expect($ctx->request);
+        $httpRequest = $request->request;
+        if ($httpRequest->hasHeader('Content-MD5')) {
             return $ctx->request;
         }
 
-        $body = StreamBodyAdapter::wrap($ctx->request->getBody());
+        $body = StreamBodyAdapter::wrap($httpRequest->getBody());
 
         return $body->isReplayable()
             ? $ctx->request
-            : $ctx->request->withBody(self::bufferBody($body));
+            : $request->withRequest(
+                $httpRequest->withBody(self::bufferBody($body))
+            );
     }
 
     /**
@@ -52,7 +57,7 @@ final class HttpChecksumInterceptor extends AbstractInterceptor
      */
     public function modifyBeforeSigning(
         RequestContext $ctx
-    ): RequestInterface
+    ): TransportRequestInterface
     {
         if (!$ctx->operation->getSchema()->hasTrait(
             Schema::T_HTTP_CHECKSUM_REQUIRED
@@ -60,11 +65,12 @@ final class HttpChecksumInterceptor extends AbstractInterceptor
             return $ctx->request;
         }
 
-        if ($ctx->request->hasHeader('Content-MD5')) {
+        $transportRequest = HttpTransportRequest::expect($ctx->request);
+        $request = $transportRequest->request;
+        if ($request->hasHeader('Content-MD5')) {
             return $ctx->request;
         }
 
-        $request = $ctx->request;
         $body = StreamBodyAdapter::wrap($request->getBody());
         if (!$body->isReplayable()) {
             $bufferedBody = self::bufferBody($body);
@@ -73,13 +79,15 @@ final class HttpChecksumInterceptor extends AbstractInterceptor
         }
         $checksum = \base64_encode($body->hash('md5', true));
 
-        return $request instanceof Request
+        $request = $request instanceof Request
             ? $request->withNormalizedHeader(
                 'content-md5',
                 'Content-MD5',
                 [$checksum]
             )
             : $request->withHeader('Content-MD5', $checksum);
+
+        return $transportRequest->withRequest($request);
     }
 
     /**

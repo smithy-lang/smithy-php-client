@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Interceptor;
 
-use Psr\Http\Message\RequestInterface;
-use Psr\Http\Message\ResponseInterface;
 use Smithy\Client\ClientConfig;
+use Smithy\Client\Transport\{
+    TransportRequestInterface,
+    TransportResponseInterface
+};
 use Smithy\Core\Serde\SerializableStructInterface;
 
 /**
@@ -80,7 +82,9 @@ abstract class AbstractInterceptor implements InterceptorInterface
     }
 
     /** @inheritDoc */
-    public function modifyBeforeRetryLoop(RequestContext $ctx): RequestInterface
+    public function modifyBeforeRetryLoop(
+        RequestContext $ctx
+    ): TransportRequestInterface
     {
         return $ctx->request;
     }
@@ -91,7 +95,9 @@ abstract class AbstractInterceptor implements InterceptorInterface
     }
 
     /** @inheritDoc */
-    public function modifyBeforeSigning(RequestContext $ctx): RequestInterface
+    public function modifyBeforeSigning(
+        RequestContext $ctx
+    ): TransportRequestInterface
     {
         return $ctx->request;
     }
@@ -107,7 +113,9 @@ abstract class AbstractInterceptor implements InterceptorInterface
     }
 
     /** @inheritDoc */
-    public function modifyBeforeTransmit(RequestContext $ctx): RequestInterface
+    public function modifyBeforeTransmit(
+        RequestContext $ctx
+    ): TransportRequestInterface
     {
         return $ctx->request;
     }
@@ -125,7 +133,7 @@ abstract class AbstractInterceptor implements InterceptorInterface
     /** @inheritDoc */
     public function modifyBeforeDeserialization(
         ResponseContext $ctx
-    ): ResponseInterface
+    ): TransportResponseInterface
     {
         return $ctx->response;
     }

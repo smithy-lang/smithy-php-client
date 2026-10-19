@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Auth;
 
-use Psr\Http\Message\RequestInterface;
+use Smithy\Client\Transport\TransportRequestInterface;
 
 /**
  * No-op signer. Returns the request unchanged.
@@ -28,7 +28,7 @@ final class NullSigner implements SignerInterface
 
     /** @inheritDoc */
     public function sign(
-        RequestInterface $request,
+        TransportRequestInterface $request,
         IdentityInterface $identity,
         array $properties = []
     ): SignerResult

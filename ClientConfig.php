@@ -20,15 +20,15 @@ use Smithy\Client\Plugin\{
 };
 use Smithy\Client\Retry\NoRetryStrategy;
 use Smithy\Client\Retry\RetryStrategyInterface;
+use Smithy\Client\Transport\TransportInterface;
 use Smithy\Core\Shape\ServiceInterface;
-use Smithy\Http\Client\HttpClientInterface;
 use Smithy\Protocol\ProtocolInterface;
 
 /**
  * Immutable configuration for a {@see ClientInterface}.
  *
  * Holds every dependency the pipeline needs to execute an operation:
- * protocol, HTTP client, endpoint resolver, retry strategy, auth
+ * protocol, transport, endpoint resolver, retry strategy, auth
  * schemes, and interceptors. `withXxx()` helpers return copies.
  *
  * The `context` associative bag stores extension state for
@@ -55,14 +55,16 @@ class ClientConfig
 
     public readonly string $retryScope;
 
+    public readonly TransportInterface $transport;
+
     /** @var array<string, mixed> */
     public readonly array $context;
 
     /**
      * @param ProtocolInterface $protocol Protocol implementation for the
      *     target service.
-     * @param HttpClientInterface $httpClient Transport for `$protocol`'s
-     *                            serialized requests.
+     * @param TransportInterface $transport Transport for serialized protocol
+     *                                     messages.
      * @param EndpointResolverInterface $endpointResolver Resolves the
      *                                  endpoint once per operation execution.
      * @param InterceptorChain $interceptors Interceptors invoked at each
@@ -84,7 +86,7 @@ class ClientConfig
      */
     public function __construct(
         public readonly ProtocolInterface $protocol,
-        public readonly HttpClientInterface $httpClient,
+        TransportInterface $transport,
         public readonly EndpointResolverInterface $endpointResolver,
         InterceptorChain $interceptors = new InterceptorChain(),
         array $supportedAuthSchemes = [],
@@ -97,6 +99,15 @@ class ClientConfig
         ?PluginState $pluginState = null
     )
     {
+        if (!$protocol->getMessageExchange()->isCompatibleWith(
+            $transport->getMessageExchange()
+        )) {
+            throw new \InvalidArgumentException(
+                'Protocol and transport message exchanges are incompatible.'
+            );
+        }
+
+        $this->transport = $transport;
         $this->interceptorChain = $interceptors;
 
         $schemes = \array_values($supportedAuthSchemes);
@@ -332,11 +343,11 @@ class ClientConfig
     }
 
     /**
-     * Create a config with the HTTP client replaced.
+     * Create a config with the transport replaced.
      */
-    public function withHttpClient(HttpClientInterface $httpClient): static
+    public function withTransport(TransportInterface $transport): static
     {
-        return $this->copyWith(['httpClient' => $httpClient]);
+        return $this->copyWith(['transport' => $transport]);
     }
 
     /**
@@ -420,7 +431,7 @@ class ClientConfig
     protected function copyWith(array $overrides): static
     {
         $protocol = $overrides['protocol'] ?? $this->protocol;
-        $httpClient = $overrides['httpClient'] ?? $this->httpClient;
+        $transport = $overrides['transport'] ?? $this->transport;
         $endpointResolver =
             $overrides['endpointResolver'] ?? $this->endpointResolver;
         $interceptors =
@@ -438,7 +449,7 @@ class ClientConfig
 
         return new static(
             protocol: $protocol,
-            httpClient: $httpClient,
+            transport: $transport,
             endpointResolver: $endpointResolver,
             interceptors: $interceptors,
             supportedAuthSchemes: $supportedAuthSchemes,

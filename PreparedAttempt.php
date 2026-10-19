@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Smithy\Client;
 
-use Psr\Http\Message\RequestInterface;
 use Smithy\Client\Auth\{
     IdentityInterface,
     IdentityResolverInterface,
     ResolvedAuthScheme
 };
+use Smithy\Client\Transport\TransportRequestInterface;
 
 /**
  * Values resolved while preparing one transmission attempt.
@@ -19,7 +19,7 @@ use Smithy\Client\Auth\{
 final readonly class PreparedAttempt
 {
     public function __construct(
-        public RequestInterface $request,
+        public TransportRequestInterface $request,
         public ResolvedAuthScheme $authScheme,
         public IdentityResolverInterface $identityResolver,
         public IdentityInterface $identity

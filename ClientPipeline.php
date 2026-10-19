@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Smithy\Client;
 
-use Psr\Http\Message\RequestInterface;
-use Psr\Http\Message\ResponseInterface;
 use Smithy\Async\Async;
 use Smithy\Client\Auth\{
     IdentityInterface,
@@ -21,15 +19,13 @@ use Smithy\Client\Interceptor\RequestContext;
 use Smithy\Client\Interceptor\ResponseContext;
 use Smithy\Client\Retry\RetryRequestFlagResolverInterface;
 use Smithy\Client\Retry\TokenAcquisitionFailedException;
+use Smithy\Client\Transport\{
+    TransportContext,
+    TransportRequestInterface,
+    TransportResponseInterface
+};
 use Smithy\Core\Serde\SerializableStructInterface;
 use Smithy\Core\Shape\OperationInterface;
-use Smithy\Http\Client\Exception\HttpException;
-use Smithy\Http\Client\HttpRequestOptions;
-use Smithy\Http\Message\{
-    HttpMessageValidator,
-    Request as SmithyRequest,
-    RequestStreamInterface
-};
 
 /**
  * Run operations through serialization, retries, transport, and
@@ -61,8 +57,6 @@ use Smithy\Http\Message\{
  */
 final class ClientPipeline
 {
-    private const UNRESOLVED_ENDPOINT = '/';
-
     public function __construct(
         private readonly ClientConfig $config
     ) {}
@@ -80,21 +74,18 @@ final class ClientPipeline
         $interceptor = $config->interceptorChain;
 
         if ($interceptor->isEmpty()) {
-            $defaultHttpOptions = $config
-                ->httpClient
-                ->getDefaultRequestOptions();
-            $httpOptions = $overrides?->resolveHttpOptions(
-                $defaultHttpOptions
+            $transportContext = new TransportContext(
+                $operation,
+                $config,
+                $overrides?->resolveTransportOptions($config->transport)
             );
-            $effectiveHttpOptions = $httpOptions ?? $defaultHttpOptions;
 
             return $this->executeWithoutInterceptors(
                 $operation,
                 $input,
                 $config,
                 $overrides,
-                $httpOptions,
-                $effectiveHttpOptions
+                $transportContext
             );
         }
 
@@ -105,14 +96,11 @@ final class ClientPipeline
         try {
             $inputCtx = new InputContext($operation, $input, $config);
             $interceptor->readBeforeExecution($inputCtx);
-
-            $defaultHttpOptions = $config
-                ->httpClient
-                ->getDefaultRequestOptions();
-            $httpOptions = $overrides?->resolveHttpOptions(
-                $defaultHttpOptions
+            $transportContext = new TransportContext(
+                $operation,
+                $config,
+                $overrides?->resolveTransportOptions($config->transport)
             );
-            $effectiveHttpOptions = $httpOptions ?? $defaultHttpOptions;
 
             $input = $interceptor->modifyBeforeSerialization($inputCtx);
             if ($input !== $inputCtx->input) {
@@ -121,7 +109,7 @@ final class ClientPipeline
             $interceptor->readBeforeSerialization($inputCtx);
 
             $request = $this->serialize($operation, $input);
-            $request = $this->applyOverrideHeaders($request, $overrides);
+            $request = $overrides?->applyToRequest($request) ?? $request;
 
             $reqCtx = new RequestContext(
                 $operation,
@@ -155,7 +143,7 @@ final class ClientPipeline
                     $interceptor,
                     $reqCtx,
                     $overrides,
-                    $httpOptions
+                    $transportContext
                 );
                 $outCtx = $attemptResult->outputContext;
 
@@ -185,10 +173,10 @@ final class ClientPipeline
                         break;
                     }
 
-                    if (!self::prepareRequestForRetry(
+                    if (!$config->transport->prepareRequestForRetry(
                         $outCtx->request ?? $retryRequest,
                         $outCtx->response,
-                        $effectiveHttpOptions,
+                        $transportContext,
                         $error
                     )) {
                         break;
@@ -284,12 +272,11 @@ final class ClientPipeline
     private function serialize(
         OperationInterface $operation,
         SerializableStructInterface $input
-    ): RequestInterface
+    ): TransportRequestInterface
     {
         return $this->config->protocol->serializeRequest(
             $operation,
-            $input,
-            self::UNRESOLVED_ENDPOINT
+            $input
         );
     }
 
@@ -304,59 +291,13 @@ final class ClientPipeline
         );
     }
 
-    private function applyEndpointHeaders(
-        RequestInterface $request,
-        Endpoint $endpoint
-    ): RequestInterface
-    {
-        $headers = $endpoint->headers;
-        if ($headers === []) {
-            return $request;
-        }
-
-        $rawHeaders = [];
-        foreach ($headers as $name => $value) {
-            $value = (string) $value;
-            HttpMessageValidator::validateHeaderName($name);
-            HttpMessageValidator::validateHeaderValue($value);
-            $lower = \strtolower($name);
-            $rawHeaders[$lower] = [$name, [$value]];
-        }
-
-        if ($request instanceof SmithyRequest) {
-            return $request->withNormalizedHeaders($rawHeaders);
-        }
-
-        foreach ($rawHeaders as [$name, $values]) {
-            $request = $request->withHeader($name, $values);
-        }
-
-        return $request;
-    }
-
-    private function applyOverrideHeaders(
-        RequestInterface $request,
-        ?RequestOverrideConfig $overrides
-    ): RequestInterface
-    {
-        if ($overrides === null) {
-            return $request;
-        }
-
-        foreach ($overrides->headers as $name => $values) {
-            $request = $request->withHeader($name, $values);
-        }
-
-        return $request;
-    }
-
     /**
      * Resolve attempt-scoped auth and endpoint state.
      */
     private function prepareAttemptRequest(
         OperationInterface $operation,
         SerializableStructInterface $input,
-        RequestInterface $request,
+        TransportRequestInterface $request,
         ClientConfig $config,
         ?RequestOverrideConfig $overrides
     ): PreparedAttempt
@@ -399,8 +340,7 @@ final class ClientPipeline
             $request,
             $endpoint
         );
-        $request = $this->applyEndpointHeaders($request, $endpoint);
-        $request = $this->applyOverrideHeaders($request, $overrides);
+        $request = $overrides?->applyToRequest($request) ?? $request;
 
         return new PreparedAttempt(
             $request,
@@ -421,7 +361,7 @@ final class ClientPipeline
         InterceptorInterface $interceptor,
         RequestContext $reqCtx,
         ?RequestOverrideConfig $overrides,
-        ?HttpRequestOptions $httpOptions
+        TransportContext $transportContext
     ): AttemptResult
     {
         $response = null;
@@ -488,9 +428,9 @@ final class ClientPipeline
 
             $interceptor->readBeforeTransmit($reqCtx);
 
-            $response = $this->config->httpClient->sendRequest(
+            $response = $this->config->transport->send(
                 $request,
-                $httpOptions
+                $transportContext
             );
 
             $respCtx = new ResponseContext(
@@ -568,12 +508,10 @@ final class ClientPipeline
         SerializableStructInterface $input,
         ClientConfig $config,
         ?RequestOverrideConfig $overrides,
-        ?HttpRequestOptions $httpOptions,
-        HttpRequestOptions $effectiveHttpOptions
+        TransportContext $transportContext
     ): SerializableStructInterface
     {
         $request = $this->serialize($operation, $input);
-        $request = $this->applyOverrideHeaders($request, $overrides);
 
         $requestFlags = self::resolveRetryRequestFlags($operation, $config);
         $retryState = $config->retryStrategy->begin(
@@ -601,9 +539,9 @@ final class ClientPipeline
                     $prepared->identity
                 )->signedRequest;
                 $attemptRequest = $signedRequest;
-                $response = $config->httpClient->sendRequest(
+                $response = $config->transport->send(
                     $signedRequest,
-                    $httpOptions
+                    $transportContext
                 );
                 $output = $this->deserializeResponse(
                     $operation,
@@ -623,10 +561,10 @@ final class ClientPipeline
                     if ($attempt >= $strategyMaxAttempts) {
                         throw $error;
                     }
-                    if (!self::prepareRequestForRetry(
+                    if (!$config->transport->prepareRequestForRetry(
                         $attemptRequest,
                         $response,
-                        $effectiveHttpOptions,
+                        $transportContext,
                         $error
                     )) {
                         throw $error;
@@ -647,89 +585,9 @@ final class ClientPipeline
         }
     }
 
-    /**
-     * Reset mutable request state before another attempt.
-     */
-    private static function prepareRequestForRetry(
-        RequestInterface $request,
-        ?ResponseInterface $response,
-        HttpRequestOptions $httpOptions,
-        \Throwable $error
-    ): bool
-    {
-        $body = $request->getBody();
-        if ($body->getSize() !== 0) {
-            try {
-                if ($body instanceof RequestStreamInterface
-                    && $body->isReplayable()
-                ) {
-                    $body->rewindForRetry();
-                } elseif ($body->isSeekable()) {
-                    $body->rewind();
-                } elseif (!self::unconsumedRequestBodyCanRetry(
-                    $body,
-                    $response,
-                    $error
-                )) {
-                    return false;
-                }
-            } catch (\Throwable) {
-                return false;
-            }
-        }
-
-        try {
-            $httpOptions->trailers?->rewindForRetry();
-        } catch (\Throwable) {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * Determine whether a non-replayable body was left untouched.
-     */
-    private static function unconsumedRequestBodyCanRetry(
-        \Psr\Http\Message\StreamInterface $body,
-        ?ResponseInterface $response,
-        \Throwable $error
-    ): bool
-    {
-        if ($response !== null) {
-            return false;
-        }
-
-        $httpError = self::findHttpException($error);
-        if ($httpError !== null) {
-            return $httpError->requestBodySeekable === false
-                && !$httpError->requestBodyStarted
-                && !$httpError->requestBodyFullyConsumed;
-        }
-
-        return $body instanceof RequestStreamInterface
-            && !$body->started()
-            && !$body->fullyConsumed();
-    }
-
-    private static function findHttpException(
-        \Throwable $error
-    ): ?HttpException
-    {
-        do {
-            if ($error instanceof HttpException) {
-                return $error;
-            }
-
-            $error = $error->getPrevious();
-        } while ($error !== null);
-
-        return null;
-    }
-
     private function deserializeResponse(
         OperationInterface $operation,
-        ResponseInterface $response
+        TransportResponseInterface $response
     ): SerializableStructInterface
     {
         return $this->config->protocol->deserializeResponse(
@@ -747,7 +605,7 @@ final class ClientPipeline
      */
     private function signRequest(
         ResolvedAuthScheme $authScheme,
-        RequestInterface $request,
+        TransportRequestInterface $request,
         IdentityInterface $identity
     ): SignerResult
     {

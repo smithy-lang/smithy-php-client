@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Auth;
 
-use Psr\Http\Message\RequestInterface;
+use Smithy\Client\Transport\TransportRequestInterface;
 
 /**
- * Result of signing an HTTP request.
+ * Result of signing a transport request.
  *
  * The signature is empty when the selected auth scheme does not produce a
  * reusable signature value.
@@ -15,7 +15,7 @@ use Psr\Http\Message\RequestInterface;
 final readonly class SignerResult
 {
     public function __construct(
-        public RequestInterface $signedRequest,
+        public TransportRequestInterface $signedRequest,
         public string $signature = ''
     ) {}
 }

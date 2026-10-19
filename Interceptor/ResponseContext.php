@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Interceptor;
 
-use Psr\Http\Message\RequestInterface;
-use Psr\Http\Message\ResponseInterface;
 use Smithy\Client\ClientConfig;
+use Smithy\Client\Transport\{
+    TransportRequestInterface,
+    TransportResponseInterface
+};
 use Smithy\Core\Serde\SerializableStructInterface;
 use Smithy\Core\Shape\OperationInterface;
 
@@ -26,8 +28,8 @@ final class ResponseContext
         public OperationInterface $operation,
         public SerializableStructInterface $input,
         public ClientConfig $config,
-        public RequestInterface $request,
-        public ResponseInterface $response
+        public TransportRequestInterface $request,
+        public TransportResponseInterface $response
     ) {}
 
     /**
@@ -35,7 +37,7 @@ final class ResponseContext
      *
      * @return void
      */
-    public function replaceResponse(ResponseInterface $response): void
+    public function replaceResponse(TransportResponseInterface $response): void
     {
         $this->response = $response;
     }
@@ -43,7 +45,7 @@ final class ResponseContext
     /**
      * Return a new context with `response` replaced.
      */
-    public function withResponse(ResponseInterface $response): self
+    public function withResponse(TransportResponseInterface $response): self
     {
         return $response === $this->response
             ? $this

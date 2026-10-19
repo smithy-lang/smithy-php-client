@@ -62,19 +62,24 @@ Modify hooks return the value passed to the next interceptor and pipeline
 stage. This interceptor adds a request header before the retry loop:
 
 ```php
-use Psr\Http\Message\RequestInterface;
 use Smithy\Client\Interceptor\AbstractInterceptor;
 use Smithy\Client\Interceptor\RequestContext;
+use Smithy\Client\Transport\TransportRequestInterface;
+use Smithy\Http\Message\HttpTransportRequest;
 
 final class CorrelationIdInterceptor extends AbstractInterceptor
 {
     public function modifyBeforeRetryLoop(
         RequestContext $ctx
-    ): RequestInterface
+    ): TransportRequestInterface
     {
-        return $ctx->request->withHeader(
-            'x-correlation-id',
-            bin2hex(random_bytes(16))
+        $request = HttpTransportRequest::expect($ctx->request);
+
+        return $request->withRequest(
+            $request->request->withHeader(
+                'x-correlation-id',
+                bin2hex(random_bytes(16))
+            )
         );
     }
 }
@@ -85,6 +90,7 @@ Read hooks return `void` and observe the current context:
 ```php
 use Smithy\Client\Interceptor\AbstractInterceptor;
 use Smithy\Client\Interceptor\ResponseContext;
+use Smithy\Http\Message\HttpTransportResponse;
 
 final class StatusLogger extends AbstractInterceptor
 {
@@ -93,7 +99,9 @@ final class StatusLogger extends AbstractInterceptor
         error_log(sprintf(
             '%s returned HTTP %d',
             $ctx->operation->getName(),
-            $ctx->response->getStatusCode()
+            HttpTransportResponse::expect($ctx->response)
+                ->response
+                ->getStatusCode()
         ));
     }
 }

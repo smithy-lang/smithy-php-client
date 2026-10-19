@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Auth;
 
-use Psr\Http\Message\RequestInterface;
+use Smithy\Client\Transport\TransportRequestInterface;
+use Smithy\Http\Message\HttpTransportRequest;
 
 /**
  * Add RFC 6750 bearer authorization to HTTPS requests.
@@ -25,11 +26,13 @@ final class HttpBearerAuthSigner implements SignerInterface
 
     /** @inheritDoc */
     public function sign(
-        RequestInterface $request,
+        TransportRequestInterface $request,
         IdentityInterface $identity,
         array $properties = []
     ): SignerResult
     {
+        $request = HttpTransportRequest::expect($request);
+        $httpRequest = $request->request;
         if (!$identity instanceof BearerToken) {
             throw new \InvalidArgumentException(
                 'HTTP bearer auth requires a '
@@ -38,16 +41,18 @@ final class HttpBearerAuthSigner implements SignerInterface
             );
         }
 
-        if (\strtolower($request->getUri()->getScheme()) !== 'https') {
+        if (\strtolower($httpRequest->getUri()->getScheme()) !== 'https') {
             throw new \InvalidArgumentException(
                 'HTTP bearer authentication requires an HTTPS endpoint.'
             );
         }
 
         return new SignerResult(
-            $request->withHeader(
-                'Authorization',
-                'Bearer ' . $identity->getToken()
+            $request->withRequest(
+                $httpRequest->withHeader(
+                    'Authorization',
+                    'Bearer ' . $identity->getToken()
+                )
             )
         );
     }

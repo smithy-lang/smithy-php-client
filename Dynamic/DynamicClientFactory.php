@@ -20,6 +20,7 @@ use Smithy\Client\Endpoint\{
 use Smithy\Client\Interceptor\InterceptorChain;
 use Smithy\Client\Plugin\PluginCollection;
 use Smithy\Client\Retry\RetryStrategyInterface;
+use Smithy\Client\Transport\TransportInterface;
 use Smithy\Core\Model\SmithyModel;
 use Smithy\Http\Client\HttpClientInterface;
 use Smithy\Protocol\ProtocolInterface;
@@ -64,6 +65,7 @@ final class DynamicClientFactory
         ?ProtocolInterface $protocol = null,
         array $protocols = [],
         ?HttpClientInterface $httpClient = null,
+        ?TransportInterface $transport = null,
         ?EndpointResolverInterface $endpointResolver = null,
         ?string $endpoint = null,
         array $endpointFunctions = [],
@@ -184,6 +186,7 @@ final class DynamicClientFactory
             protocolId: $protocolId,
             protocol: $protocol,
             httpClient: $httpClient,
+            transport: $transport,
             endpointResolver: $endpointResolver,
             interceptors: $interceptors,
             supportedAuthSchemes: $supportedAuthSchemes,

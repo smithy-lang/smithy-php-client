@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Interceptor;
 
-use Psr\Http\Message\RequestInterface;
-use Psr\Http\Message\ResponseInterface;
 use Smithy\Client\ClientConfig;
+use Smithy\Client\Transport\{
+    TransportRequestInterface,
+    TransportResponseInterface
+};
 use Smithy\Core\Serde\SerializableStructInterface;
 
 /**
@@ -104,7 +106,7 @@ interface InterceptorInterface
      */
     public function modifyBeforeRetryLoop(
         RequestContext $ctx
-    ): RequestInterface;
+    ): TransportRequestInterface;
 
     // Attempt-level hooks may repeat on retry.
 
@@ -118,7 +120,9 @@ interface InterceptorInterface
     /**
      * Modify the request before signing.
      */
-    public function modifyBeforeSigning(RequestContext $ctx): RequestInterface;
+    public function modifyBeforeSigning(
+        RequestContext $ctx
+    ): TransportRequestInterface;
 
     /**
      * Observe the request before signing.
@@ -137,7 +141,9 @@ interface InterceptorInterface
     /**
      * Modify the signed request before transmission.
      */
-    public function modifyBeforeTransmit(RequestContext $ctx): RequestInterface;
+    public function modifyBeforeTransmit(
+        RequestContext $ctx
+    ): TransportRequestInterface;
 
     /**
      * Observe the request before transmission.
@@ -158,7 +164,7 @@ interface InterceptorInterface
      */
     public function modifyBeforeDeserialization(
         ResponseContext $ctx
-    ): ResponseInterface;
+    ): TransportResponseInterface;
 
     /**
      * Observe the response before deserialization.

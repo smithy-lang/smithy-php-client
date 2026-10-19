@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Interceptor;
 
-use Psr\Http\Message\RequestInterface;
 use Smithy\Client\ClientConfig;
+use Smithy\Client\Transport\TransportRequestInterface;
 use Smithy\Core\Serde\SerializableStructInterface;
 use Smithy\Core\Shape\OperationInterface;
 
@@ -26,7 +26,7 @@ final class RequestContext
         public OperationInterface $operation,
         public SerializableStructInterface $input,
         public ClientConfig $config,
-        public RequestInterface $request
+        public TransportRequestInterface $request
     ) {}
 
     /**
@@ -34,7 +34,7 @@ final class RequestContext
      *
      * @return void
      */
-    public function replaceRequest(RequestInterface $request): void
+    public function replaceRequest(TransportRequestInterface $request): void
     {
         $this->request = $request;
     }
@@ -42,7 +42,7 @@ final class RequestContext
     /**
      * Return a new context with `request` replaced.
      */
-    public function withRequest(RequestInterface $request): self
+    public function withRequest(TransportRequestInterface $request): self
     {
         return $request === $this->request
             ? $this

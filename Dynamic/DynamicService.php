@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Dynamic;
 
+use Smithy\Client\Waiter\WaiterDefinitionNormalizer;
 use Smithy\Core\Model\SmithyModel;
 use Smithy\Core\Serde\{
     Schema,
@@ -26,6 +27,8 @@ final class DynamicService implements ServiceInterface
     private array $operationIdsByName = [];
     /** @var array<string, DynamicOperation> */
     private array $operationsByName = [];
+    /** @var array<string, string>|null */
+    private ?array $waiterOperationNamesByName = null;
 
     /**
      * Create runtime metadata for a modeled service.
@@ -136,6 +139,68 @@ final class DynamicService implements ServiceInterface
             $this->protocolId,
             $this->errorDiscriminatorTraits
         );
+    }
+
+    /**
+     * Resolve the operation associated with a modeled waiter name.
+     */
+    public function getWaiterOperation(string $name): ?DynamicOperation
+    {
+        $this->indexWaiters();
+
+        $operationName = $this->waiterOperationNamesByName[
+            WaiterDefinitionNormalizer::normalizeName($name)
+        ] ?? null;
+
+        return $operationName === null
+            ? null
+            : $this->getOperation($operationName);
+    }
+
+    /**
+     * Build the service-wide waiter-name index on first use.
+     */
+    private function indexWaiters(): void
+    {
+        if ($this->waiterOperationNamesByName !== null) {
+            return;
+        }
+
+        $waitersByOperation = [];
+        $operationNamesById = [];
+        foreach ($this->operationIdsByName
+            as $operationName => $operationId
+        ) {
+            $operation = $this->model->expectShape($operationId);
+            $traits = $operation['traits'] ?? [];
+            if (!\is_array($traits)
+                || !isset($traits['smithy.waiters#waitable'])
+            ) {
+                continue;
+            }
+
+            $waiters = WaiterDefinitionNormalizer::normalize(
+                $this->model->getOriginalShapeId($operationId),
+                $traits['smithy.waiters#waitable'],
+                $this->model->getOperationOutputId($operationId)
+                    !== 'smithy.api#Unit'
+            );
+            if ($waiters !== []) {
+                $waitersByOperation[$operationId] = $waiters;
+                $operationNamesById[$operationId] = $operationName;
+            }
+        }
+
+        $waiterOperationNames = [];
+        foreach (WaiterDefinitionNormalizer::indexServiceWaiters(
+            $this->serviceId,
+            $waitersByOperation
+        ) as $normalizedName => $operationId) {
+            $waiterOperationNames[$normalizedName] =
+                $operationNamesById[$operationId];
+        }
+
+        $this->waiterOperationNamesByName = $waiterOperationNames;
     }
 
     /**

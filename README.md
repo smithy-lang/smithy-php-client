@@ -95,6 +95,19 @@ foreach ($pages as $page) {
 }
 ```
 
+Modeled waiters are available by their Smithy waiter name. The result retains
+the output or modeled error that satisfied the success acceptor:
+
+```php
+$result = $client->waitUntil(
+    waiterName: 'ForecastReady',
+    input: ['city' => 'Raleigh'],
+    maxWaitTime: 60.0,
+);
+
+$forecast = $result->output;
+```
+
 Provider subclasses register protocols, authentication schemes, endpoint
 functions, and schema traits through an internal `DynamicClientRuntime`
 returned by their protected runtime hook.

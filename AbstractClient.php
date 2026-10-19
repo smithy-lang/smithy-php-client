@@ -13,9 +13,12 @@ use Smithy\Client\Plugin\{
     ModeledBehaviorPlugin,
     PluginCollection
 };
-use Smithy\Client\Waiter\Acceptor;
-use Smithy\Client\Waiter\Waiter;
-use Smithy\Client\Waiter\WaiterConfig;
+use Smithy\Client\Waiter\{
+    Waiter,
+    WaiterConfig,
+    WaiterSchemaExtension,
+    WaiterSchemaExtensionProvider
+};
 use Smithy\Core\Serde\SerializableStructInterface;
 use Smithy\Core\Shape\OperationInterface;
 
@@ -136,21 +139,43 @@ abstract class AbstractClient implements ClientInterface
     /**
      * Create a waiter bound to an operation on this client.
      *
-     * @param list<Acceptor> $acceptors Ordered acceptors.
-     * @param int<1, max> $minDelay Modeled minimum delay in seconds.
-     * @param int<1, max> $maxDelay Modeled maximum delay in seconds.
-     *
      * @throws \InvalidArgumentException When resolved delay bounds are
      *                                   invalid.
+     * @throws \LogicException When the operation does not define the waiter.
      */
     protected function createWaiter(
         OperationInterface $operation,
-        array $acceptors,
-        int $minDelay,
-        int $maxDelay,
+        string $waiterName,
         ?WaiterConfig $config = null
     ): Waiter
     {
+        $hasOutput = $operation->getOutputSchema()->id
+            !== 'smithy.api#Unit';
+        $waiters = $operation->getSchema()->getExtension(
+            WaiterSchemaExtensionProvider::key($hasOutput)
+        );
+        if (!$waiters instanceof WaiterSchemaExtension) {
+            throw new \LogicException(
+                "Operation {$operation->getId()} has no modeled waiters."
+            );
+        }
+
+        $definition = $waiters->get($waiterName);
+        if ($definition === null) {
+            throw new \LogicException(
+                "Operation {$operation->getId()} does not define waiter "
+                    . "{$waiterName}."
+            );
+        }
+        if ($definition->requiresOutput
+            && $operation->getOutputSchema()->id === 'smithy.api#Unit'
+        ) {
+            throw new \LogicException(
+                "Operation {$operation->getId()} waiter {$waiterName}: "
+                    . 'output matchers require an operation output.'
+            );
+        }
+
         return new Waiter(
             fn(
                 SerializableStructInterface $input
@@ -159,9 +184,9 @@ abstract class AbstractClient implements ClientInterface
                 $input,
                 $config?->requestOverrides
             ),
-            $acceptors,
-            $config?->minDelay ?? $minDelay,
-            $config?->maxDelay ?? $maxDelay
+            $definition->acceptors,
+            $config?->minDelay ?? $definition->minDelay,
+            $config?->maxDelay ?? $definition->maxDelay
         );
     }
 }

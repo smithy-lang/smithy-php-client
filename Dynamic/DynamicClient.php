@@ -23,6 +23,10 @@ use Smithy\Client\Pagination\Paginator;
 use Smithy\Client\Plugin\PluginCollection;
 use Smithy\Client\Retry\RetryStrategyInterface;
 use Smithy\Client\Transport\TransportInterface;
+use Smithy\Client\Waiter\{
+    WaiterConfig,
+    WaiterResult
+};
 use Smithy\Core\Model\SmithyModel;
 use Smithy\Core\Serde\{
     SchemaConverter,
@@ -225,7 +229,6 @@ class DynamicClient extends AbstractClient
             $input,
             $overrides
         );
-
         $modeledInput = $operation->createInputFromValue($input);
         $output = $this->executeOperation(
             $operation,
@@ -278,6 +281,62 @@ class DynamicClient extends AbstractClient
         return $requestOverrides === null
             ? $paginator
             : $paginator->withRequestOverrides($requestOverrides);
+    }
+
+    /**
+     * Wait for a modeled waiter to reach a terminal success state.
+     *
+     * @param array<string, mixed>|DocumentInterface|null $input
+     *
+     * @throws \InvalidArgumentException When the waiter, timing, or request
+     *                                   overrides are invalid.
+     * @throws \Smithy\Core\Shape\Exception\InvalidShapeValueException When
+     *         input is invalid.
+     * @throws \Smithy\Client\Waiter\WaiterFailureException When waiting does
+     *         not succeed.
+     * @throws \LogicException When the operation uses unsupported streaming.
+     */
+    public function waitUntil(
+        string $waiterName,
+        array|DocumentInterface|null $input,
+        float $maxWaitTime,
+        ?WaiterConfig $config = null
+    ): WaiterResult
+    {
+        $operation = $this->service->getWaiterOperation($waiterName);
+        if ($operation === null) {
+            throw new \InvalidArgumentException(
+                "Unknown dynamic waiter: {$waiterName}."
+            );
+        }
+
+        $this->assertPreviewSupported($operation);
+        [$input, $requestOverrides] = self::prepareInput($input, []);
+        if ($requestOverrides !== null
+            && $config?->requestOverrides !== null
+        ) {
+            $requestOverrides = $config->requestOverrides->withFallback(
+                $requestOverrides
+            );
+        } else {
+            $requestOverrides ??= $config?->requestOverrides;
+        }
+        if ($requestOverrides !== $config?->requestOverrides) {
+            $config = new WaiterConfig(
+                minDelay: $config?->minDelay,
+                maxDelay: $config?->maxDelay,
+                requestOverrides: $requestOverrides
+            );
+        }
+
+        return $this->createWaiter(
+            $operation,
+            $waiterName,
+            $config
+        )->wait(
+            $operation->createInputFromValue($input),
+            $maxWaitTime
+        );
     }
 
     /**

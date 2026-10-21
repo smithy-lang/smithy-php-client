@@ -340,37 +340,37 @@ class DynamicClient extends AbstractClient
     }
 
     /**
-     * Invoke a modeled operation using its method name.
+     * Invoke a modeled operation, paginator, or waiter by generated method
+     * convention.
      *
      * @param array<int|string, mixed> $arguments
      */
     public function __call(
         string $name,
         array $arguments
-    ): StructDocument
+    ): StructDocument|Paginator|WaiterResult
     {
-        if (\count($arguments) > 1) {
-            throw new \BadMethodCallException(
-                "Dynamic operation {$name} accepts at most one input."
-            );
-        }
-
-        if ($arguments === []) {
-            $input = null;
-        } elseif (\array_key_exists(0, $arguments)) {
-            $input = $arguments[0];
-        } elseif (\array_key_exists('input', $arguments)) {
-            $input = $arguments['input'];
-        } elseif (\array_key_exists('args', $arguments)) {
-            $input = $arguments['args'];
-        } else {
-            $argument = (string) \array_key_first($arguments);
-            throw new \BadMethodCallException(
-                "Unknown dynamic operation argument '{$argument}'."
-            );
-        }
-
-        return $this->call($name, $input);
+        $operation = $this->getOperation($name) ?? $this->getOperation(\ucfirst($name));
+        $waited = \str_starts_with($name, 'waitUntil');
+        $paginated = \str_ends_with($name, 'Paginated');
+        return match (true) {
+            $operation !== null => $this->call($name, ...$arguments),
+            $waited && $paginated => throw new \BadMethodCallException(
+                "Dynamic method '{$name}' is ambiguous. "
+                    . 'Use paginate() or waitUntil() explicitly.'
+            ),
+            $waited => $this->waitUntil(
+                \substr($name, \strlen('waitUntil')),
+                ...$arguments
+            ),
+            $paginated => $this->paginate(
+                \substr($name, 0, -\strlen('Paginated')),
+                ...$arguments
+            ),
+            default => throw new \BadMethodCallException(
+                "Unknown dynamic method: {$name}."
+            ),
+        };
     }
 
     /**

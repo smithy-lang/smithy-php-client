@@ -90,6 +90,12 @@ $pages = $client->paginate('ListForecasts', [
     'pageSize' => 25,
 ]);
 
+// Equivalent to the generated-client naming convention.
+$pages = $client->listForecastsPaginated([
+    'city' => 'Raleigh',
+    'pageSize' => 25,
+]);
+
 foreach ($pages as $page) {
     $forecasts = $page->getMember('forecasts')?->asList() ?? [];
 }
@@ -103,6 +109,11 @@ $result = $client->waitUntil(
     waiterName: 'ForecastReady',
     input: ['city' => 'Raleigh'],
     maxWaitTime: 60.0,
+);
+
+$result = $client->waitUntilForecastReady(
+    ['city' => 'Raleigh'],
+    60.0,
 );
 
 $forecast = $result->output;

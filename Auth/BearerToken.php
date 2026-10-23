@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Auth;
 
+use JsonSerializable;
 use Smithy\Core\Shape\SensitiveDataRedactor;
 
 /**
  * Represent an opaque bearer token identity.
  */
-final readonly class BearerToken implements IdentityInterface
+final readonly class BearerToken implements IdentityInterface, JsonSerializable
 {
     /**
      * Create a bearer token.
@@ -40,6 +41,38 @@ final readonly class BearerToken implements IdentityInterface
             'token' => SensitiveDataRedactor::REDACTED,
             'expirationTime' => $this->expirationTime
         ];
+    }
+
+    /**
+     * Return a redacted representation for JSON serialization.
+     *
+     * @return array{token: string, expirationTime: ?float}
+     */
+    public function jsonSerialize(): array
+    {
+        return $this->__debugInfo();
+    }
+
+    /**
+     * Return a redacted representation for PHP serialization.
+     *
+     * @return array{token: string, expirationTime: ?float}
+     */
+    public function __serialize(): array
+    {
+        return $this->__debugInfo();
+    }
+
+    /**
+     * Reject restoration from a redacted serialized representation.
+     *
+     * @param array{token?: string, expirationTime?: ?float} $_data
+     */
+    public function __unserialize(array $_data): void
+    {
+        throw new \LogicException(
+            'Bearer tokens cannot be restored from PHP serialization.'
+        );
     }
 
     /**

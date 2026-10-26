@@ -225,10 +225,9 @@ class DynamicClient extends AbstractClient
     {
         $operation = $this->expectOperation($operationName);
         $this->assertPreviewSupported($operation);
-        [$input, $requestOverrides] = self::prepareInput(
-            $input,
-            $overrides
-        );
+        $requestOverrides = $overrides === []
+            ? null
+            : RequestOverrideConfig::fromArray($overrides);
         $modeledInput = $operation->createInputFromValue($input);
         $output = $this->executeOperation(
             $operation,
@@ -269,10 +268,9 @@ class DynamicClient extends AbstractClient
     {
         $operation = $this->expectOperation($operationName);
         $this->assertPreviewSupported($operation);
-        [$input, $requestOverrides] = self::prepareInput(
-            $input,
-            $overrides
-        );
+        $requestOverrides = $overrides === []
+            ? null
+            : RequestOverrideConfig::fromArray($overrides);
         $paginator = $this->createPaginator(
             $operation,
             $operation->createInputFromValue($input)
@@ -311,23 +309,6 @@ class DynamicClient extends AbstractClient
         }
 
         $this->assertPreviewSupported($operation);
-        [$input, $requestOverrides] = self::prepareInput($input, []);
-        if ($requestOverrides !== null
-            && $config?->requestOverrides !== null
-        ) {
-            $requestOverrides = $config->requestOverrides->withFallback(
-                $requestOverrides
-            );
-        } else {
-            $requestOverrides ??= $config?->requestOverrides;
-        }
-        if ($requestOverrides !== $config?->requestOverrides) {
-            $config = new WaiterConfig(
-                minDelay: $config?->minDelay,
-                maxDelay: $config?->maxDelay,
-                requestOverrides: $requestOverrides
-            );
-        }
 
         return $this->createWaiter(
             $operation,
@@ -438,47 +419,6 @@ class DynamicClient extends AbstractClient
         }
 
         return $operation;
-    }
-
-    /**
-     * Separate request overrides from modeled input members.
-     *
-     * @param array<string, mixed>|DocumentInterface|null $input
-     * @param array<string, mixed> $overrides
-     *
-     * @return array{
-     *     0: array<string, mixed>|DocumentInterface|null,
-     *     1: RequestOverrideConfig|null
-     * }
-     */
-    private static function prepareInput(
-        array|DocumentInterface|null $input,
-        array $overrides
-    ): array
-    {
-        $inputOverrides = [];
-        if (\is_array($input)) {
-            foreach ($input as $name => $value) {
-                if (\is_string($name)
-                    && \str_starts_with($name, '@')
-                ) {
-                    $inputOverrides[$name] = $value;
-                    unset($input[$name]);
-                }
-            }
-        }
-        if ($inputOverrides !== []) {
-            $overrides = $overrides === []
-                ? $inputOverrides
-                : [...$inputOverrides, ...$overrides];
-        }
-
-        return [
-            $input,
-            $overrides === []
-                ? null
-                : RequestOverrideConfig::fromArray($overrides)
-        ];
     }
 
     /**

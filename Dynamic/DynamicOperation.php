@@ -137,6 +137,14 @@ final class DynamicOperation implements OperationInterface
     }
 
     /**
+     * Return the generic exception used for unmodeled service errors.
+     */
+    public function getServiceExceptionClass(): string
+    {
+        return \Smithy\Core\Exception\ApiException::class;
+    }
+
+    /**
      * Return the model-scoped runtime identity.
      */
     public function getRuntimeIdentity(): string

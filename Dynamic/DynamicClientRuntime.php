@@ -6,6 +6,7 @@ namespace Smithy\Client\Dynamic;
 
 use Smithy\Client\Auth\AuthSchemeInterface;
 use Smithy\Client\Endpoint\Bytecode\RulesFunctionInterface;
+use Smithy\Client\Protocol\ProtocolResolver;
 use Smithy\Core\Serde\SchemaTraitRegistry;
 use Smithy\Protocol\ProtocolInterface;
 
@@ -16,16 +17,13 @@ use Smithy\Protocol\ProtocolInterface;
  */
 final class DynamicClientRuntime
 {
-    /** @var array<string, ProtocolInterface> */
-    private readonly array $protocols;
+    private readonly ProtocolResolver $protocolResolver;
     /** @var list<AuthSchemeInterface> */
     private readonly array $authSchemes;
     /** @var array<string, RulesFunctionInterface> */
     private readonly array $endpointFunctions;
     /** @var array<string, string> */
     private readonly array $endpointAuthSchemeIds;
-    /** @var list<string> */
-    private readonly array $protocolPreference;
     /** @var array<string, string> */
     private readonly array $errorDiscriminatorTraits;
 
@@ -47,16 +45,16 @@ final class DynamicClientRuntime
         array $errorDiscriminatorTraits = []
     )
     {
-        $this->protocols = self::validateProtocols($protocols);
+        $this->protocolResolver = new ProtocolResolver(
+            $protocols,
+            $protocolPreference
+        );
         $this->authSchemes = self::validateAuthSchemes($authSchemes);
         $this->endpointFunctions = self::validateEndpointFunctions(
             $endpointFunctions
         );
         $this->endpointAuthSchemeIds = self::validateEndpointAuthSchemeIds(
             $endpointAuthSchemeIds
-        );
-        $this->protocolPreference = self::validateProtocolPreference(
-            $protocolPreference
         );
         $this->errorDiscriminatorTraits =
             self::validateErrorDiscriminatorTraits(
@@ -75,8 +73,8 @@ final class DynamicClientRuntime
 
         return new self(
             protocols: [
-                ...$this->protocols,
-                ...$runtime->protocols
+                ...$this->getProtocols(),
+                ...$runtime->getProtocols()
             ],
             authSchemes: [
                 ...$this->authSchemes,
@@ -91,8 +89,8 @@ final class DynamicClientRuntime
                 ...$runtime->endpointAuthSchemeIds
             ],
             protocolPreference: [
-                ...$runtime->protocolPreference,
-                ...$this->protocolPreference
+                ...$runtime->getProtocolPreference(),
+                ...$this->getProtocolPreference()
             ],
             traitRegistry: $runtime->traitRegistry ?? $this->traitRegistry,
             errorDiscriminatorTraits: [
@@ -109,7 +107,15 @@ final class DynamicClientRuntime
      */
     public function getProtocols(): array
     {
-        return $this->protocols;
+        return $this->protocolResolver->getProtocols();
+    }
+
+    /**
+     * Return the shared protocol resolver registrations.
+     */
+    public function getProtocolResolver(): ProtocolResolver
+    {
+        return $this->protocolResolver;
     }
 
     /**
@@ -149,7 +155,7 @@ final class DynamicClientRuntime
      */
     public function getProtocolPreference(): array
     {
-        return $this->protocolPreference;
+        return $this->protocolResolver->getPreference();
     }
 
     /**
@@ -168,31 +174,6 @@ final class DynamicClientRuntime
     public function getErrorDiscriminatorTraits(): array
     {
         return $this->errorDiscriminatorTraits;
-    }
-
-    /**
-     * Validate protocol registrations.
-     *
-     * @param array<mixed> $protocols
-     *
-     * @return array<string, ProtocolInterface>
-     */
-    private static function validateProtocols(array $protocols): array
-    {
-        foreach ($protocols as $protocolId => $protocol) {
-            if (!\is_string($protocolId)
-                || $protocolId === ''
-                || !$protocol instanceof ProtocolInterface
-                || $protocol->getId() !== $protocolId
-            ) {
-                throw new \InvalidArgumentException(
-                    'Protocol mappings must contain protocol shape IDs '
-                    . 'mapped to matching ProtocolInterface instances.'
-                );
-            }
-        }
-
-        return $protocols;
     }
 
     /**
@@ -279,32 +260,6 @@ final class DynamicClientRuntime
         }
 
         return $schemeIds;
-    }
-
-    /**
-     * Validate and deduplicate protocol preferences.
-     *
-     * @param array<mixed> $preference
-     *
-     * @return list<string>
-     */
-    private static function validateProtocolPreference(
-        array $preference
-    ): array
-    {
-        $validated = [];
-        foreach ($preference as $protocolId) {
-            if (!\is_string($protocolId) || $protocolId === '') {
-                throw new \InvalidArgumentException(
-                    'Protocol preference entries must be protocol shape IDs.'
-                );
-            }
-            if (!\in_array($protocolId, $validated, true)) {
-                $validated[] = $protocolId;
-            }
-        }
-
-        return $validated;
     }
 
     /**

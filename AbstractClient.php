@@ -50,6 +50,7 @@ abstract class AbstractClient implements ClientInterface
     )
     {
         $this->config = $config
+            ->resolveProtocol()
             ->withPluginCollection($plugins)
             ->withPlugin(ModeledBehaviorPlugin::instance())
             ->resolvePlugins();

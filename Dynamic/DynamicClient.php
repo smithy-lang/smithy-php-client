@@ -21,6 +21,7 @@ use Smithy\Client\Endpoint\{
 use Smithy\Client\Interceptor\InterceptorChain;
 use Smithy\Client\Pagination\Paginator;
 use Smithy\Client\Plugin\PluginCollection;
+use Smithy\Client\Protocol\ProtocolResolverInterface;
 use Smithy\Client\Retry\RetryStrategyInterface;
 use Smithy\Client\Transport\TransportInterface;
 use Smithy\Client\Waiter\{
@@ -41,10 +42,7 @@ use Smithy\Http\Client\{
     HttpClientInterface,
     HttpClientTransport
 };
-use Smithy\Protocol\{
-    ProtocolInterface,
-    RpcV2\RpcV2CborProtocol
-};
+use Smithy\Protocol\ProtocolInterface;
 
 /**
  * Execute a runtime-loaded Smithy service without generated types.
@@ -170,7 +168,8 @@ class DynamicClient extends AbstractClient
         SmithyModel $model,
         string $serviceId,
         ?string $protocolId,
-        ProtocolInterface $protocol,
+        ?ProtocolInterface $protocol,
+        ProtocolResolverInterface $protocolResolver,
         ?HttpClientInterface $httpClient,
         ?TransportInterface $transport,
         EndpointResolverInterface $endpointResolver,
@@ -193,9 +192,11 @@ class DynamicClient extends AbstractClient
         );
 
         return new ClientConfig(
-            protocol: $protocol,
             transport: $transport,
             endpointResolver: $endpointResolver,
+            protocol: $protocol,
+            protocolResolver: $protocolResolver,
+            protocolId: $protocolId,
             interceptors: $interceptors,
             supportedAuthSchemes: $supportedAuthSchemes,
             authSchemeResolver: $authSchemeResolver,
@@ -378,9 +379,6 @@ class DynamicClient extends AbstractClient
     protected static function getDefaultRuntime(): DynamicClientRuntime
     {
         return new DynamicClientRuntime(
-            protocols: [
-                RpcV2CborProtocol::ID => new RpcV2CborProtocol()
-            ],
             endpointFunctions: StdFunctions::all()
         );
     }

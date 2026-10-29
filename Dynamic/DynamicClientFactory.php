@@ -19,6 +19,7 @@ use Smithy\Client\Endpoint\{
 };
 use Smithy\Client\Interceptor\InterceptorChain;
 use Smithy\Client\Plugin\PluginCollection;
+use Smithy\Client\Protocol\ProtocolResolver;
 use Smithy\Client\Retry\RetryStrategyInterface;
 use Smithy\Client\Transport\TransportInterface;
 use Smithy\Core\Model\SmithyModel;
@@ -103,34 +104,20 @@ final class DynamicClientFactory
             endpointAuthSchemeIds: $endpointAuthSchemeIds,
             protocolPreference: $protocolPreference
         ));
-        $protocols = $runtime->getProtocols();
-        $protocolPreference = $runtime->getProtocolPreference();
+        $protocolResolver = ProtocolResolver::defaults()->merge(
+            $runtime->getProtocolResolver()
+        );
         $supportedAuthSchemes = $runtime->getAuthSchemes();
         $endpointFunctions = $runtime->getEndpointFunctions();
         $endpointAuthSchemeIds = $runtime->getEndpointAuthSchemeIds();
 
-        if ($protocol === null) {
-            [$protocolId, $protocol] = self::resolveProtocol(
-                $serviceId,
-                $serviceTraits,
-                $protocolId,
-                $protocolPreference,
-                $protocols
-            );
-        } else {
-            $resolvedProtocolId = $protocol->getId();
-            if ($protocolId !== null && $protocolId !== $resolvedProtocolId) {
-                throw new \InvalidArgumentException(
-                    "Protocol implementation {$resolvedProtocolId} does not "
-                    . "match configured protocol {$protocolId}."
-                );
-            }
-            $protocolId = $resolvedProtocolId;
-        }
-        if ($protocolId !== null && !isset($serviceTraits[$protocolId])) {
-            throw new \RuntimeException(
-                "Protocol {$protocolId} is not modeled by service "
-                . "{$serviceId}."
+        if ($protocol !== null
+            && $protocolId !== null
+            && $protocol->getId() !== $protocolId
+        ) {
+            throw new \InvalidArgumentException(
+                "Protocol implementation {$protocol->getId()} does not match "
+                . "configured protocol {$protocolId}."
             );
         }
         if ($endpointResolver !== null && $endpoint !== null) {
@@ -185,6 +172,7 @@ final class DynamicClientFactory
             serviceId: $serviceId,
             protocolId: $protocolId,
             protocol: $protocol,
+            protocolResolver: $protocolResolver,
             httpClient: $httpClient,
             transport: $transport,
             endpointResolver: $endpointResolver,
@@ -284,92 +272,4 @@ final class DynamicClientFactory
         return $serviceIds[0];
     }
 
-    /**
-     * Resolve a modeled protocol using deterministic preference order.
-     *
-     * @param array<string, mixed> $serviceTraits
-     * @param list<string> $protocolPreference
-     * @param array<string, ProtocolInterface> $protocols
-     *
-     * @return array{string, ProtocolInterface}
-     */
-    private static function resolveProtocol(
-        string $serviceId,
-        array $serviceTraits,
-        ?string $protocolId,
-        array $protocolPreference,
-        array $protocols
-    ): array
-    {
-        if ($protocolId !== null) {
-            $protocol = $protocols[$protocolId] ?? null;
-            if ($protocol === null) {
-                throw new \RuntimeException(
-                    "No runtime implementation is available for protocol "
-                    . "{$protocolId}."
-                );
-            }
-
-            return [$protocolId, $protocol];
-        }
-
-        foreach (self::protocolPreference(
-            $protocolPreference,
-            \array_keys($protocols)
-        ) as $candidateId) {
-            if (!isset($serviceTraits[$candidateId])) {
-                continue;
-            }
-
-            $candidate = $protocols[$candidateId] ?? null;
-            if ($candidate !== null) {
-                return [$candidateId, $candidate];
-            }
-        }
-
-        $modeledProtocols = [];
-        foreach (\array_keys($protocols) as $candidateId) {
-            if (isset($serviceTraits[$candidateId])) {
-                $modeledProtocols[] = $candidateId;
-            }
-        }
-
-        $traits = $modeledProtocols === []
-            ? \array_keys($serviceTraits)
-            : $modeledProtocols;
-        throw new \RuntimeException(
-            "No available protocol implementation matched service "
-            . "{$serviceId}. Service traits: "
-            . ($traits === [] ? '(none)' : \implode(', ', $traits))
-        );
-    }
-
-    /**
-     * Merge configured preferences with the stable default order.
-     *
-     * @param list<string> $configured
-     * @param list<string> $available
-     *
-     * @return list<string>
-     */
-    private static function protocolPreference(
-        array $configured,
-        array $available
-    ): array
-    {
-        if ($configured === []) {
-            return $available;
-        }
-
-        $preference = [];
-        foreach ([...$configured, ...$available] as $protocolId) {
-            if (\is_string($protocolId)
-                && !\in_array($protocolId, $preference, true)
-            ) {
-                $preference[] = $protocolId;
-            }
-        }
-
-        return $preference;
-    }
 }

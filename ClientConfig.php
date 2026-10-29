@@ -18,6 +18,10 @@ use Smithy\Client\Plugin\{
     PluginResolver,
     PluginState
 };
+use Smithy\Client\Protocol\{
+    ProtocolResolver,
+    ProtocolResolverInterface
+};
 use Smithy\Client\Retry\NoRetryStrategy;
 use Smithy\Client\Retry\RetryStrategyInterface;
 use Smithy\Client\Transport\TransportInterface;
@@ -38,6 +42,8 @@ class ClientConfig
 {
     private readonly PluginState $pluginState;
 
+    private readonly bool $protocolIsExplicit;
+
     public readonly InterceptorChain $interceptorChain;
 
     /** @var list<AuthSchemeInterface> */
@@ -57,16 +63,20 @@ class ClientConfig
 
     public readonly TransportInterface $transport;
 
+    public readonly ProtocolResolverInterface $protocolResolver;
+
     /** @var array<string, mixed> */
     public readonly array $context;
 
     /**
-     * @param ProtocolInterface $protocol Protocol implementation for the
-     *     target service.
      * @param TransportInterface $transport Transport for serialized protocol
      *                                     messages.
      * @param EndpointResolverInterface $endpointResolver Resolves the
      *                                  endpoint once per operation execution.
+     * @param ProtocolInterface|null $protocol Explicit protocol override.
+     * @param ProtocolResolverInterface|null $protocolResolver Selects a
+     *     modeled protocol when no explicit implementation is configured.
+     * @param string|null $protocolId Explicit modeled protocol shape ID.
      * @param InterceptorChain $interceptors Interceptors invoked at each
      *                                      pipeline hook point.
      * @param list<AuthSchemeInterface> $supportedAuthSchemes Auth schemes
@@ -83,11 +93,14 @@ class ClientConfig
      *                      interceptor state or forward-compatible fields.
      * @param ServiceInterface|null $service Runtime service metadata.
      * @param PluginState|null $pluginState Internal plugin application state.
+     * @param bool|null $protocolIsExplicit Internal protocol provenance.
      */
     public function __construct(
-        public readonly ProtocolInterface $protocol,
         TransportInterface $transport,
         public readonly EndpointResolverInterface $endpointResolver,
+        public readonly ?ProtocolInterface $protocol = null,
+        ?ProtocolResolverInterface $protocolResolver = null,
+        public readonly ?string $protocolId = null,
         InterceptorChain $interceptors = new InterceptorChain(),
         array $supportedAuthSchemes = [],
         ?AuthSchemeResolverInterface $authSchemeResolver = null,
@@ -96,18 +109,39 @@ class ClientConfig
         array $context = [],
         array $authSchemePreference = [],
         public readonly ?ServiceInterface $service = null,
-        ?PluginState $pluginState = null
+        ?PluginState $pluginState = null,
+        ?bool $protocolIsExplicit = null
     )
     {
-        if (!$protocol->getMessageExchange()->isCompatibleWith(
-            $transport->getMessageExchange()
-        )) {
+        if ($protocolId === '') {
+            throw new \InvalidArgumentException(
+                'Protocol ID must be a non-empty shape ID.'
+            );
+        }
+        if ($protocol !== null
+            && $protocolId !== null
+            && $protocol->getId() !== $protocolId
+        ) {
+            throw new \InvalidArgumentException(
+                "Protocol implementation {$protocol->getId()} does not match "
+                . "configured protocol {$protocolId}."
+            );
+        }
+        if ($protocol !== null
+            && !$protocol->getMessageExchange()->isCompatibleWith(
+                $transport->getMessageExchange()
+            )
+        ) {
             throw new \InvalidArgumentException(
                 'Protocol and transport message exchanges are incompatible.'
             );
         }
 
         $this->transport = $transport;
+        $this->protocolResolver =
+            $protocolResolver ?? ProtocolResolver::defaults();
+        $this->protocolIsExplicit =
+            $protocolIsExplicit ?? $protocol !== null;
         $this->interceptorChain = $interceptors;
 
         $schemes = \array_values($supportedAuthSchemes);
@@ -271,6 +305,35 @@ class ClientConfig
     }
 
     /**
+     * Resolve the configured protocol from the attached service schema.
+     *
+     * @internal Called while constructing a client.
+     */
+    public function resolveProtocol(): static
+    {
+        if ($this->service === null) {
+            throw new \LogicException(
+                'Client service metadata must be configured before protocol '
+                . 'resolution.'
+            );
+        }
+
+        $protocol = $this->protocolResolver->resolveProtocol(
+            $this->service,
+            $this->protocolId,
+            $this->protocolIsExplicit ? $this->protocol : null
+        );
+        if ($protocol === $this->protocol) {
+            return $this;
+        }
+
+        return $this->copyWith([
+            'protocol' => $protocol,
+            'protocolIsExplicit' => false
+        ]);
+    }
+
+    /**
      * Create a config with `$interceptor` appended.
      */
     public function withInterceptor(InterceptorInterface $interceptor): static
@@ -339,7 +402,95 @@ class ClientConfig
      */
     public function withProtocol(ProtocolInterface $protocol): static
     {
-        return $this->copyWith(['protocol' => $protocol]);
+        $config = $this->copyWith([
+            'protocol' => $protocol,
+            'protocolId' => $protocol->getId(),
+            'protocolIsExplicit' => true
+        ]);
+
+        return $config->service === null
+            ? $config
+            : $config->resolveProtocol();
+    }
+
+    /**
+     * Create a config that selects a registered protocol by shape ID.
+     */
+    public function withProtocolId(string $protocolId): static
+    {
+        if ($protocolId === '') {
+            throw new \InvalidArgumentException(
+                'Protocol ID must be a non-empty shape ID.'
+            );
+        }
+
+        $config = $this->copyWith([
+            'protocol' => null,
+            'protocolId' => $protocolId,
+            'protocolIsExplicit' => false
+        ]);
+
+        return $config->service === null
+            ? $config
+            : $config->resolveProtocol();
+    }
+
+    /**
+     * Create a config with the protocol resolver replaced.
+     */
+    public function withProtocolResolver(
+        ProtocolResolverInterface $resolver
+    ): static
+    {
+        $config = $this->copyWith([
+            'protocol' => $this->protocolIsExplicit
+                ? $this->protocol
+                : null,
+            'protocolResolver' => $resolver
+        ]);
+
+        return $config->service === null
+            ? $config
+            : $config->resolveProtocol();
+    }
+
+    /**
+     * Return the selected protocol.
+     */
+    public function getProtocol(): ProtocolInterface
+    {
+        return $this->protocol ?? throw new \LogicException(
+            'Client protocol has not been resolved.'
+        );
+    }
+
+    /**
+     * Return registered protocols modeled by the configured service.
+     *
+     * @return array<string, ProtocolInterface>
+     */
+    public function getApplicableProtocols(): array
+    {
+        if ($this->service === null) {
+            throw new \LogicException(
+                'Client service metadata must be configured before listing '
+                . 'applicable protocols.'
+            );
+        }
+
+        return $this->protocolResolver->getApplicableProtocols(
+            $this->service
+        );
+    }
+
+    /**
+     * Return every registered protocol implementation.
+     *
+     * @return array<string, ProtocolInterface>
+     */
+    public function getRegisteredProtocols(): array
+    {
+        return $this->protocolResolver->getProtocols();
     }
 
     /**
@@ -430,7 +581,16 @@ class ClientConfig
      */
     protected function copyWith(array $overrides): static
     {
-        $protocol = $overrides['protocol'] ?? $this->protocol;
+        $protocol = \array_key_exists('protocol', $overrides)
+            ? $overrides['protocol']
+            : $this->protocol;
+        $protocolResolver = $overrides['protocolResolver']
+            ?? $this->protocolResolver;
+        $protocolId = \array_key_exists('protocolId', $overrides)
+            ? $overrides['protocolId']
+            : $this->protocolId;
+        $protocolIsExplicit = $overrides['protocolIsExplicit']
+            ?? $this->protocolIsExplicit;
         $transport = $overrides['transport'] ?? $this->transport;
         $endpointResolver =
             $overrides['endpointResolver'] ?? $this->endpointResolver;
@@ -448,9 +608,11 @@ class ClientConfig
         $pluginState = $overrides['pluginState'] ?? $this->pluginState;
 
         return new static(
-            protocol: $protocol,
             transport: $transport,
             endpointResolver: $endpointResolver,
+            protocol: $protocol,
+            protocolResolver: $protocolResolver,
+            protocolId: $protocolId,
             interceptors: $interceptors,
             supportedAuthSchemes: $supportedAuthSchemes,
             authSchemeResolver: $authSchemeResolver,
@@ -460,8 +622,19 @@ class ClientConfig
             authSchemePreference: $overrides['authSchemePreference']
                 ?? $this->authSchemePreference,
             service: $service,
-            pluginState: $pluginState
+            pluginState: $pluginState,
+            protocolIsExplicit: $protocolIsExplicit
         );
+    }
+
+    /**
+     * Whether the current protocol was supplied explicitly.
+     *
+     * @internal Used by configuration subclasses when copying base state.
+     */
+    protected function hasExplicitProtocol(): bool
+    {
+        return $this->protocolIsExplicit;
     }
 
     private function resolveWithPluginPredicate(

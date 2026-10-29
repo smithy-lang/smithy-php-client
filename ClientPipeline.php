@@ -274,7 +274,7 @@ final class ClientPipeline
         SerializableStructInterface $input
     ): TransportRequestInterface
     {
-        return $this->config->protocol->serializeRequest(
+        return $this->config->getProtocol()->serializeRequest(
             $operation,
             $input
         );
@@ -336,7 +336,7 @@ final class ClientPipeline
                 ->unwrap();
         }
 
-        $request = $config->protocol->setServiceEndpoint(
+        $request = $config->getProtocol()->setServiceEndpoint(
             $request,
             $endpoint
         );
@@ -590,7 +590,7 @@ final class ClientPipeline
         TransportResponseInterface $response
     ): SerializableStructInterface
     {
-        return $this->config->protocol->deserializeResponse(
+        return $this->config->getProtocol()->deserializeResponse(
             $operation,
             $response
         );

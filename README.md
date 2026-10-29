@@ -43,6 +43,7 @@ retry decisions, and deserializes the response. Interceptors run at the
 - protocol implementation
 - HTTP client
 - endpoint resolver
+- protocol resolver and optional explicit protocol selection
 - authentication schemes and identity resolvers
 - retry strategy
 - interceptors and plugin state
@@ -119,9 +120,11 @@ $result = $client->waitUntilForecastReady(
 $forecast = $result->output;
 ```
 
-Provider subclasses register protocols, authentication schemes, endpoint
-functions, and schema traits through an internal `DynamicClientRuntime`
-returned by their protected runtime hook.
+Generated and dynamic clients use the same protocol resolver. It selects the
+first registered implementation modeled as a trait on the service schema,
+unless the caller explicitly chooses a protocol implementation or shape ID.
+Provider subclasses add protocols, authentication schemes, endpoint
+functions, and schema traits through an internal `DynamicClientRuntime`.
 
 ## Dependencies
 

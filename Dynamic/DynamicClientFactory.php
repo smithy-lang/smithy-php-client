@@ -84,14 +84,6 @@ final class DynamicClientFactory
         string $clientClass = DynamicClient::class
     ): DynamicClient
     {
-        if (!\is_a($clientClass, DynamicClient::class, true)) {
-            throw new \InvalidArgumentException(
-                'Dynamic client class must extend '
-                . DynamicClient::class
-                . '.'
-            );
-        }
-
         $model = \is_string($model)
             ? SmithyModel::fromFile($model)
             : $model;

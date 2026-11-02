@@ -13,6 +13,8 @@ namespace Smithy\Client\Auth;
  * Properties passed to `resolveIdentity` are identity-specific defaults
  * supplied by the auth scheme. Signer properties and endpoint-selected
  * signing overrides are not included.
+ *
+ * @template-covariant TIdentity of IdentityInterface
  */
 interface IdentityResolverInterface
 {
@@ -20,6 +22,7 @@ interface IdentityResolverInterface
      * Resolve an identity result from the supplied properties.
      *
      * @param array<string, mixed> $properties Identity-specific properties.
+     * @return IdentityResult<TIdentity>
      * @throws \Throwable On unexpected or unrecoverable failure.
      */
     public function resolveIdentity(array $properties = []): IdentityResult;

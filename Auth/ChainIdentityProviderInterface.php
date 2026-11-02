@@ -8,8 +8,10 @@ namespace Smithy\Client\Auth;
  * Discoverable participant in a long-lived identity chain.
  *
  * Providers are assembled once into an {@see IdentityChain}. During that
- * assembly pass each provider inspects the requested identity type plus any
- * shared setup state, then registers zero or more resolvers.
+ * assembly pass each provider inspects shared setup state, then registers
+ * zero or more resolvers.
+ *
+ * @template TIdentity of IdentityInterface
  */
 interface ChainIdentityProviderInterface
 {
@@ -31,14 +33,10 @@ interface ChainIdentityProviderInterface
     public function featureIds(): array;
 
     /**
-     * Register zero or more resolvers for the requested identity type.
+     * Register zero or more resolvers.
      *
-     * Providers that do not support `$identityType` should return without
-     * mutating the setup.
-     *
-     * @param class-string<IdentityInterface> $identityType
-     *
+     * @param ChainSetup<TIdentity> $setup
      * @return void
      */
-    public function setup(string $identityType, ChainSetup $setup): void;
+    public function setup(ChainSetup $setup): void;
 }

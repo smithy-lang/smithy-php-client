@@ -10,9 +10,13 @@ namespace Smithy\Client\Auth;
  * Cache entries are scoped to the resolution properties. Identities without
  * an expiration remain cached indefinitely unless a matching rejected
  * identity marks the entry for refresh.
+ *
+ * @template TIdentity of IdentityInterface
+ * @implements IdentityResolverInterface<TIdentity>
  */
 final class CachingIdentityResolver implements IdentityResolverInterface
 {
+    /** @var TIdentity|null */
     private ?IdentityInterface $cached = null;
 
     /** @var array<string, mixed>|null */
@@ -20,13 +24,14 @@ final class CachingIdentityResolver implements IdentityResolverInterface
 
     private bool $refreshRequired = false;
 
-    /** @var \Closure(IdentityInterface, IdentityInterface): bool */
+    /** @var \Closure(TIdentity, IdentityInterface): bool */
     private readonly \Closure $identityMatcher;
 
     /**
+     * @param IdentityResolverInterface<TIdentity> $inner
      * @param int $refreshWindowSeconds Refresh this many seconds before
      *                                 expiration.
-     * @param null|callable(IdentityInterface, IdentityInterface): bool
+     * @param null|callable(TIdentity, IdentityInterface): bool
      *     $identityMatcher Compare the cached identity to a rejected identity.
      */
     public function __construct(
@@ -79,6 +84,8 @@ final class CachingIdentityResolver implements IdentityResolverInterface
 
     /**
      * Return the wrapped resolver.
+     *
+     * @return IdentityResolverInterface<TIdentity>
      */
     public function getInner(): IdentityResolverInterface
     {

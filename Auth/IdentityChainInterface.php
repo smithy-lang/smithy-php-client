@@ -11,6 +11,9 @@ namespace Smithy\Client\Auth;
  * chain across requests. The chain itself remains an
  * {@see IdentityResolverInterface}; callers need not know whether the
  * underlying identity came from a single resolver or a composed chain.
+ *
+ * @template-covariant TIdentity of IdentityInterface
+ * @extends IdentityResolverInterface<TIdentity>
  */
 interface IdentityChainInterface extends IdentityResolverInterface
 {

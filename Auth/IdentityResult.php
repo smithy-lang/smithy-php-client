@@ -6,9 +6,14 @@ namespace Smithy\Client\Auth;
 
 /**
  * Successful identity resolution or an expected identity-specific miss.
+ *
+ * @template-covariant TIdentity of IdentityInterface
  */
 final readonly class IdentityResult
 {
+    /**
+     * @param TIdentity|null $identity
+     */
     private function __construct(
         public ?IdentityInterface $identity,
         public ?string $error,
@@ -17,6 +22,10 @@ final readonly class IdentityResult
 
     /**
      * Create a successful identity result.
+     *
+     * @template TResolved of IdentityInterface
+     * @param TResolved $identity
+     * @return self<TResolved>
      */
     public static function success(IdentityInterface $identity): self
     {
@@ -27,6 +36,7 @@ final readonly class IdentityResult
      * Create an expected identity-resolution miss.
      *
      * @param class-string $resolver
+     * @return self<never>
      */
     public static function notFound(
         string $resolver,
@@ -38,6 +48,8 @@ final readonly class IdentityResult
 
     /**
      * Return the resolved identity or throw for an expected miss.
+     *
+     * @return TIdentity
      */
     public function unwrap(): IdentityInterface
     {

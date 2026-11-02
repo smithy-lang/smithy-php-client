@@ -6,6 +6,8 @@ namespace Smithy\Client\Auth;
 
 /**
  * Resolve one configured bearer token.
+ *
+ * @implements IdentityResolverInterface<BearerToken>
  */
 final readonly class StaticTokenProvider implements IdentityResolverInterface
 {

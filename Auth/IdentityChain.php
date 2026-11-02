@@ -11,20 +11,27 @@ namespace Smithy\Client\Auth;
  * implementations. The chain validates provider declarations, assembles their
  * resolver registrations once, caches the most recent successful identity
  * while it remains fresh, and then behaves as a normal identity resolver.
+ *
+ * @template TIdentity of IdentityInterface
+ * @implements IdentityChainInterface<TIdentity>
  */
 final class IdentityChain implements IdentityChainInterface
 {
     private const REFRESH_WINDOW_SECONDS = 300;
 
-    /** @var class-string<IdentityInterface> */
-    private readonly string $identityType;
-
-    /** @var list<IdentityResolverRegistration> */
+    /**
+     * @var list<array{
+     *     resolver: IdentityResolverInterface<TIdentity>,
+     *     metadata: ResolvedIdentityMetadata,
+     *     terminal: bool
+     * }>
+     */
     private readonly array $registrations;
 
     /** @var list<string> */
     private readonly array $detectedSlots;
 
+    /** @var TIdentity|null */
     private ?IdentityInterface $cachedIdentity = null;
 
     /** @var array<string, mixed>|null */
@@ -34,34 +41,23 @@ final class IdentityChain implements IdentityChainInterface
 
     private bool $refreshRequired = false;
 
-    /** @var \Closure(IdentityInterface, IdentityInterface): bool */
+    /** @var \Closure(TIdentity, IdentityInterface): bool */
     private readonly \Closure $identityMatcher;
 
     /**
-     * @param class-string<IdentityInterface> $identityType
-     * @param list<ChainIdentityProviderInterface> $providers
+     * @param list<ChainIdentityProviderInterface<TIdentity>> $providers
      * @param list<string> $slotOrder
      * @param array<string, mixed> $properties
-     * @param null|callable(IdentityInterface, IdentityInterface): bool
+     * @param null|callable(TIdentity, IdentityInterface): bool
      *     $identityMatcher Compare the cached identity to a rejected identity.
      */
     public function __construct(
-        string $identityType,
         array $providers,
         array $slotOrder,
         array $properties = [],
         ?callable $identityMatcher = null
     )
     {
-        if (!\is_a($identityType, IdentityInterface::class, true)) {
-            throw new \InvalidArgumentException(
-                'identityType must be a class-string implementing '
-                    . IdentityInterface::class
-                    . '.'
-            );
-        }
-
-        $this->identityType = $identityType;
         $this->identityMatcher = $identityMatcher === null
             ? static fn(
                 IdentityInterface $cached,
@@ -69,11 +65,12 @@ final class IdentityChain implements IdentityChainInterface
             ): bool => $cached === $rejected
             : \Closure::fromCallable($identityMatcher);
         $sortedProviders = self::sortProviders($providers, $slotOrder);
+        /** @var ChainSetup<TIdentity> $setup */
         $setup = new ChainSetup($properties);
 
         foreach ($sortedProviders as $provider) {
             $setup->setCurrentProvider($provider);
-            $provider->setup($identityType, $setup);
+            $provider->setup($setup);
             if ($setup->isTerminal()) {
                 break;
             }
@@ -104,33 +101,23 @@ final class IdentityChain implements IdentityChainInterface
         $failures = [];
 
         foreach ($this->registrations as $registration) {
-            $result = $registration->resolver->resolveIdentity($properties);
+            $result = $registration['resolver']->resolveIdentity($properties);
             $identity = $result->identity;
             if ($identity === null) {
-                if ($registration->terminal) {
+                if ($registration['terminal']) {
                     return $result;
                 }
 
-                $failures[] = $registration->metadata->providerName
+                $failures[] = $registration['metadata']->providerName
                     . ': '
                     . $result->error;
 
                 continue;
             }
 
-            if (!$identity instanceof $this->identityType) {
-                throw new \RuntimeException(
-                    'Identity resolver returned '
-                        . $identity::class
-                        . ', expected '
-                        . $this->identityType
-                        . '.'
-                );
-            }
-
             $this->cachedIdentity = $identity;
             $this->cachedIdentityProperties = $properties;
-            $this->lastResolvedMetadata = $registration->metadata;
+            $this->lastResolvedMetadata = $registration['metadata'];
             $this->refreshRequired = false;
 
             return $result;
@@ -157,7 +144,7 @@ final class IdentityChain implements IdentityChainInterface
         }
 
         foreach ($this->registrations as $registration) {
-            $registration->invalidate($rejectedIdentity);
+            $registration['resolver']->invalidate($rejectedIdentity);
         }
     }
 
@@ -165,16 +152,6 @@ final class IdentityChain implements IdentityChainInterface
     public function getLastResolvedMetadata(): ?ResolvedIdentityMetadata
     {
         return $this->lastResolvedMetadata;
-    }
-
-    /**
-     * Return resolver registrations in execution order.
-     *
-     * @return list<IdentityResolverRegistration>
-     */
-    public function getRegistrations(): array
-    {
-        return $this->registrations;
     }
 
     /**
@@ -188,19 +165,10 @@ final class IdentityChain implements IdentityChainInterface
     }
 
     /**
-     * Return the identity type this chain resolves.
-     *
-     * @return class-string<IdentityInterface>
-     */
-    public function getIdentityType(): string
-    {
-        return $this->identityType;
-    }
-
-    /**
-     * @param list<ChainIdentityProviderInterface> $providers
+     * @template TProviderIdentity of IdentityInterface
+     * @param list<ChainIdentityProviderInterface<TProviderIdentity>> $providers
      * @param list<string> $slotOrder
-     * @return list<ChainIdentityProviderInterface>
+     * @return list<ChainIdentityProviderInterface<TProviderIdentity>>
      */
     private static function sortProviders(
         array $providers,

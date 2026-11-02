@@ -10,13 +10,21 @@ namespace Smithy\Client\Auth;
  * Providers share this object sequentially during assembly. They may attach
  * arbitrary state into the property bag and register resolvers tagged with the
  * current provider's metadata.
+ *
+ * @template TIdentity of IdentityInterface
  */
 final class ChainSetup
 {
     /** @var array<string, mixed> */
     private array $properties;
 
-    /** @var list<IdentityResolverRegistration> */
+    /**
+     * @var list<array{
+     *     resolver: IdentityResolverInterface<TIdentity>,
+     *     metadata: ResolvedIdentityMetadata,
+     *     terminal: bool
+     * }>
+     */
     private array $registrations = [];
 
     /** @var list<string> */
@@ -77,6 +85,7 @@ final class ChainSetup
      *
      * @internal
      *
+     * @param ChainIdentityProviderInterface<TIdentity> $provider
      * @return void
      */
     public function setCurrentProvider(
@@ -92,6 +101,7 @@ final class ChainSetup
     /**
      * Add a resolver to the identity chain.
      *
+     * @param IdentityResolverInterface<TIdentity> $resolver
      * @param null|list<string> $featureIds
      *
      * @return void
@@ -107,16 +117,17 @@ final class ChainSetup
             );
         }
 
-        $this->registrations[] = new IdentityResolverRegistration(
-            resolver: $resolver,
-            metadata: $this->metadataForRegistration($featureIds),
-            terminal: false
-        );
+        $this->registrations[] = [
+            'resolver' => $resolver,
+            'metadata' => $this->metadataForRegistration($featureIds),
+            'terminal' => false
+        ];
     }
 
     /**
      * Add a terminal resolver to the identity chain.
      *
+     * @param IdentityResolverInterface<TIdentity> $resolver
      * @param null|list<string> $featureIds
      *
      * @return void
@@ -132,11 +143,11 @@ final class ChainSetup
             );
         }
 
-        $this->registrations[] = new IdentityResolverRegistration(
-            resolver: $resolver,
-            metadata: $this->metadataForRegistration($featureIds),
-            terminal: true
-        );
+        $this->registrations[] = [
+            'resolver' => $resolver,
+            'metadata' => $this->metadataForRegistration($featureIds),
+            'terminal' => true
+        ];
         $this->terminal = true;
     }
 
@@ -167,7 +178,11 @@ final class ChainSetup
     /**
      * Return resolver registrations in insertion order.
      *
-     * @return list<IdentityResolverRegistration>
+     * @return list<array{
+     *     resolver: IdentityResolverInterface<TIdentity>,
+     *     metadata: ResolvedIdentityMetadata,
+     *     terminal: bool
+     * }>
      */
     public function registrations(): array
     {

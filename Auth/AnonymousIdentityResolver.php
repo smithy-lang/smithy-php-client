@@ -6,6 +6,8 @@ namespace Smithy\Client\Auth;
 
 /**
  * Resolve the singleton {@see AnonymousIdentity}.
+ *
+ * @implements IdentityResolverInterface<AnonymousIdentity>
  */
 final class AnonymousIdentityResolver implements IdentityResolverInterface
 {

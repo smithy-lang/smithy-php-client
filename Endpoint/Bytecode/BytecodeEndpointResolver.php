@@ -226,6 +226,24 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
             }
         }
 
+        $traceSink = $params->config->context[
+            EndpointResolverParams::CONTEXT_TRACE_SINK
+        ] ?? null;
+        if ($traceSink !== null
+            && !$traceSink instanceof EndpointResolutionTraceSinkInterface
+        ) {
+            throw new \InvalidArgumentException(
+                'Endpoint resolution trace sink must implement '
+                    . EndpointResolutionTraceSinkInterface::class
+                    . '.'
+            );
+        }
+
+        $trace = $traceSink?->begin($this->bytecode, $inputs);
+        if ($trace !== null) {
+            return $this->evaluator->evaluateTraced($inputs, $trace);
+        }
+
         $key = $this->buildCacheKey($inputs);
 
         // L1 fast path: back-to-back identical resolve on this

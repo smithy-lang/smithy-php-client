@@ -23,6 +23,11 @@ final class EndpointResolverParams
     public const CONTEXT_PARAMETERS = 'smithy.endpointParameters';
 
     /**
+     * ClientConfig::context key containing an endpoint resolution trace sink.
+     */
+    public const CONTEXT_TRACE_SINK = 'smithy.endpointResolutionTraceSink';
+
+    /**
      * Create endpoint resolver parameters.
      */
     public function __construct(

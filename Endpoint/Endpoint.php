@@ -22,10 +22,28 @@ final class Endpoint
      *
      * @param list<EndpointAuthScheme> $authSchemes
      * @param array<string, string> $headers
+     * @param array<string, mixed> $properties
      */
     public function __construct(
         public readonly string $url,
         public readonly array $authSchemes = [],
-        public readonly array $headers = []
+        public readonly array $headers = [],
+        public readonly array $properties = []
     ) {}
+
+    /**
+     * Return an endpoint property, or null when it is not present.
+     */
+    public function getProperty(string $name): mixed
+    {
+        return $this->properties[$name] ?? null;
+    }
+
+    /**
+     * Return whether an endpoint property is present.
+     */
+    public function hasProperty(string $name): bool
+    {
+        return \array_key_exists($name, $this->properties);
+    }
 }

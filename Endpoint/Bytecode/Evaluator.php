@@ -159,6 +159,141 @@ final readonly class Evaluator
     }
 
     /**
+     * Resolve an endpoint while reporting its BDD decision path.
+     *
+     * This is a separate implementation of the evaluation loop so normal
+     * endpoint resolution does not pay for a trace check at each node. Keep
+     * its condition dispatch synchronized with {@see self::evaluate()}.
+     *
+     * @param array<string, mixed> $params Named endpoint parameter values.
+     *
+     * @throws RulesEvaluationException When the ruleset returns an error,
+     *                                  reaches no result, or contains
+     *                                  invalid bytecode.
+     */
+    public function evaluateTraced(
+        array $params,
+        EndpointResolutionTraceInterface $trace
+    ): Endpoint
+    {
+        $bytecode = $this->bytecode;
+        $regs = $bytecode->defaultRegisters;
+        $inputRegisterMap = $bytecode->inputRegisterMap;
+        foreach ($params as $name => $value) {
+            if ($value !== null && isset($inputRegisterMap[$name])) {
+                $regs[$inputRegisterMap[$name]] = $value;
+            }
+        }
+        $this->validateInputRegisters($regs);
+
+        $effectiveParameters = [];
+        foreach ($inputRegisterMap as $name => $register) {
+            $value = $regs[$register];
+            if ($value !== null) {
+                $effectiveParameters[$name] = $value;
+            }
+        }
+        $trace->parameters($effectiveParameters);
+
+        $nodes = $bytecode->bddNodes;
+        $condTypes = $bytecode->conditionTypes;
+        $condOps = $bytecode->conditionOperands;
+        $constants = $bytecode->constants;
+        $ref = $bytecode->bddRoot;
+        $resultOffset = Bytecode::RESULT_OFFSET;
+        $negResultOffset = -$resultOffset;
+
+        while (($ref > 1 && $ref < $resultOffset)
+            || ($ref < -1 && $ref > $negResultOffset)
+        ) {
+            $nodeReference = $ref;
+            $idx = $ref > 0 ? $ref - 1 : -$ref - 1;
+            $base = $idx * 3;
+            $condIdx = $nodes[$base];
+            $condType = $condTypes[$condIdx];
+            $operand = $condOps[$condIdx];
+
+            switch ($condType) {
+                case 0: // COND_FULL
+                    $v = $this->runBytecode(
+                        $bytecode->conditionOffsets[$condIdx],
+                        $regs
+                    );
+                    $result = $v !== null && $v !== false;
+                    break;
+                case 1: // COND_ISSET
+                    $result = $regs[$operand] !== null;
+                    break;
+                case 2: // COND_IS_TRUE
+                    $result = $regs[$operand] === true;
+                    break;
+                case 3: // COND_IS_FALSE
+                    $result = $regs[$operand] === false;
+                    break;
+                case 4: // COND_NOT_SET
+                    $result = $regs[$operand] === null;
+                    break;
+                case 5: // COND_STRING_EQ_REG_CONST
+                    $s = $regs[$operand & 0xFF];
+                    $result = $s !== null
+                        && $s === $constants[$operand >> 8];
+                    break;
+                default:
+                    throw new RulesEvaluationException(
+                        "Unknown condition type {$condType} at condition "
+                            . $condIdx
+                    );
+            }
+
+            $take = ($result xor ($ref < 0));
+            $trace->node($nodeReference, $condIdx, $result, $take);
+            $ref = $take ? $nodes[$base + 1] : $nodes[$base + 2];
+        }
+
+        if ($ref === 1 || $ref === -1) {
+            $trace->result(-1, null);
+            throw new RulesEvaluationException(
+                'No endpoint matched the supplied parameters'
+            );
+        }
+
+        $resultIdx = $ref - Bytecode::RESULT_OFFSET;
+        if ($resultIdx < 0 || !isset($bytecode->resultOffsets[$resultIdx])) {
+            $trace->result(-1, null);
+            throw new RulesEvaluationException(
+                'No endpoint matched the supplied parameters'
+            );
+        }
+
+        try {
+            $result = $this->runBytecode(
+                $bytecode->resultOffsets[$resultIdx],
+                $regs
+            );
+        } catch (RulesEvaluationException $exception) {
+            $trace->result($resultIdx, null);
+            throw $exception;
+        }
+
+        if ($result === null) {
+            $trace->result(-1, null);
+            throw new RulesEvaluationException(
+                'No endpoint matched the supplied parameters'
+            );
+        }
+        if (!$result instanceof Endpoint) {
+            $trace->result($resultIdx, null);
+            throw new RulesEvaluationException(
+                'Endpoint result program did not return an Endpoint'
+            );
+        }
+
+        $trace->result($resultIdx, $result);
+
+        return $result;
+    }
+
+    /**
      * @param array<int, mixed> $regs
      */
     private function validateInputRegisters(array $regs): void
@@ -542,10 +677,12 @@ final readonly class Evaluator
                     $url = $stack[--$sp];
                     $properties = ($flags & 0x02) !== 0 ? $stack[--$sp] : [];
                     $headers = ($flags & 0x01) !== 0 ? $stack[--$sp] : [];
+                    $properties = \is_array($properties) ? $properties : [];
                     return new Endpoint(
                         url: \is_string($url) ? $url : self::urlToString($url),
                         authSchemes: $this->extractAuthSchemes($properties),
-                        headers: self::normalizeHeaders($headers)
+                        headers: self::normalizeHeaders($headers),
+                        properties: $properties
                     );
 
                 case 40: // RETURN_VALUE

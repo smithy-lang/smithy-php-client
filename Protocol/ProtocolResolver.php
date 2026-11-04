@@ -7,7 +7,8 @@ namespace Smithy\Client\Protocol;
 use Smithy\Core\Shape\ServiceInterface;
 use Smithy\Protocol\{
     ProtocolInterface,
-    RpcV2\RpcV2CborProtocol
+    RpcV2\RpcV2CborProtocol,
+    RpcV2\RpcV2JsonProtocol
 };
 
 /**
@@ -40,7 +41,8 @@ final readonly class ProtocolResolver implements ProtocolResolverInterface
     public static function defaults(): self
     {
         return new self([
-            RpcV2CborProtocol::ID => new RpcV2CborProtocol()
+            RpcV2CborProtocol::ID => new RpcV2CborProtocol(),
+            RpcV2JsonProtocol::ID => new RpcV2JsonProtocol()
         ]);
     }
 

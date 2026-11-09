@@ -12,7 +12,8 @@ namespace Smithy\Client\Dynamic;
 use Smithy\Core\Serde\{
     DynamicTraitValue,
     Schema,
-    SerializableStructInterface
+    SerializableStructInterface,
+    TimestampFormat
 };
 use Smithy\Core\Shape\Document\{
     AbstractDocument,
@@ -124,7 +125,7 @@ final class DocumentFactory
 
             $members[$index] = $this->coerceDefault(
                 $member,
-                $this->getDirectTraitValue(
+                $this->getTraitValue(
                     $member,
                     self::DEFAULT_TRAIT
                 ),
@@ -204,7 +205,7 @@ final class DocumentFactory
             } elseif ($this->shouldApplyDefault($target, $member)) {
                 $members[$index] = $this->coerceDefault(
                     $member,
-                    $this->getDirectTraitValue(
+                    $this->getTraitValue(
                         $member,
                         self::DEFAULT_TRAIT
                     ),
@@ -457,7 +458,7 @@ final class DocumentFactory
             if ($this->shouldApplyDefault($target, $member)) {
                 $members[$index] = $this->coerceDefault(
                     $member,
-                    $this->getDirectTraitValue(
+                    $this->getTraitValue(
                         $member,
                         self::DEFAULT_TRAIT
                     ),
@@ -481,9 +482,13 @@ final class DocumentFactory
         Schema $member
     ): bool
     {
-        return $member->hasDirectTraitById(self::DEFAULT_TRAIT)
-            && !$container->hasTraitById(self::INPUT_TRAIT)
-            && !$member->hasTraitById(self::CLIENT_OPTIONAL_TRAIT);
+        return !$container->hasTraitById(self::INPUT_TRAIT)
+            && !$member->hasTraitById(self::CLIENT_OPTIONAL_TRAIT)
+            && $member->hasTraitById(self::DEFAULT_TRAIT)
+            && $this->getTraitValue(
+                $member,
+                self::DEFAULT_TRAIT
+            ) !== null;
     }
 
     /**
@@ -505,6 +510,25 @@ final class DocumentFactory
                 );
             }
             $value = new BlobValue($decoded);
+        }
+        if ($schema->type === ShapeType::Timestamp->value
+            && \is_string($value)
+        ) {
+            try {
+                $value = TimestampFormat::DateTime->parse($value);
+            } catch (\InvalidArgumentException) {
+                throw $this->invalid($path, 'timestamp default', $value);
+            }
+        }
+        if ($schema->type === ShapeType::Float_->value
+            || $schema->type === ShapeType::Double->value
+        ) {
+            $value = match ($value) {
+                'NaN' => \NAN,
+                'Infinity' => \INF,
+                '-Infinity' => -\INF,
+                default => $value
+            };
         }
 
         return $this->coerce($schema, $value, $path);
@@ -905,14 +929,14 @@ final class DocumentFactory
     }
 
     /**
-     * Return the raw value of a directly applied runtime trait.
+     * Return the raw value of an effective runtime trait.
      */
-    private function getDirectTraitValue(
+    private function getTraitValue(
         Schema $schema,
         string $traitId
     ): mixed
     {
-        $value = $schema->getDirectTraitById($traitId);
+        $value = $schema->getTraitById($traitId);
 
         return $value instanceof DynamicTraitValue
             ? $value->value

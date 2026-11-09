@@ -49,6 +49,12 @@ final class RequestCompressionPlugin extends AbstractPlugin
         );
     }
 
+    /** @inheritDoc */
+    public function getPluginPhase(): PluginPhase
+    {
+        return PluginPhase::BeforeApply;
+    }
+
     private function resolveDisableRequestCompression(
         ClientConfig $config
     ): bool

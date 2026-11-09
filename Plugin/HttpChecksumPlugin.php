@@ -22,4 +22,10 @@ final class HttpChecksumPlugin extends AbstractPlugin
     {
         return $config->withInterceptor(new HttpChecksumInterceptor());
     }
+
+    /** @inheritDoc */
+    public function getPluginPhase(): PluginPhase
+    {
+        return PluginPhase::Apply;
+    }
 }

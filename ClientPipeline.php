@@ -249,6 +249,7 @@ final class ClientPipeline
         ?\Throwable $error
     ): SerializableStructInterface
     {
+        $output = $ctx->output;
         try {
             $output = $interceptor->modifyBeforeCompletion($ctx, $error);
             $ctx->replaceOutput($output);
@@ -266,6 +267,11 @@ final class ClientPipeline
 
         if ($error !== null) {
             throw $error;
+        }
+        if ($output === null) {
+            throw new \LogicException(
+                'Execution completed without an output.'
+            );
         }
 
         return $output;

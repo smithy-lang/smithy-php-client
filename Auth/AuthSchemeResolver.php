@@ -10,7 +10,7 @@ declare(strict_types=1);
 namespace Smithy\Client\Auth;
 
 use Smithy\Client\ClientConfig;
-use Smithy\Client\Endpoint\EndpointAuthScheme;
+use Smithy\Core\Endpoint\EndpointAuthScheme;
 use Smithy\Core\Shape\OperationInterface;
 
 /**

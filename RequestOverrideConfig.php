@@ -13,7 +13,7 @@ use Smithy\Client\Plugin\{
     PluginCollection,
     PluginInterface
 };
-use Smithy\Client\Transport\{
+use Smithy\Core\Transport\{
     TransportInterface,
     TransportOptionsInterface,
     TransportRequestInterface,

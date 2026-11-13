@@ -14,7 +14,7 @@ use Smithy\Client\Auth\{
     IdentityResolverInterface
 };
 use Smithy\Client\ClientConfig;
-use Smithy\Client\Transport\{
+use Smithy\Core\Transport\{
     TransportRequestInterface,
     TransportResponseInterface
 };

@@ -56,7 +56,7 @@ with one dependency replaced.
 | Namespace | Responsibility |
 |---|---|
 | `Smithy\Client\Auth` | Authentication selection, identities, and signers |
-| `Smithy\Client\Endpoint` | Static and bytecode endpoint resolution |
+| `Smithy\Client\Endpoint` | Static and bytecode endpoint resolvers; the resolved `Endpoint` value lives in `Smithy\Core\Endpoint` |
 | [`Smithy\Client\Interceptor`](Interceptor/README.md) | Request pipeline hooks and contexts |
 | `Smithy\Client\Pagination` | Schema-driven paginators |
 | [`Smithy\Client\Plugin`](Plugin/README.md) | Reusable client configuration changes |

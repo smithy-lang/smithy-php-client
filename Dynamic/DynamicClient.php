@@ -28,7 +28,7 @@ use Smithy\Client\Pagination\Paginator;
 use Smithy\Client\Plugin\PluginCollection;
 use Smithy\Client\Protocol\ProtocolResolverInterface;
 use Smithy\Client\Retry\RetryStrategyInterface;
-use Smithy\Client\Transport\TransportInterface;
+use Smithy\Core\Transport\TransportInterface;
 use Smithy\Client\Waiter\{
     WaiterConfig,
     WaiterResult

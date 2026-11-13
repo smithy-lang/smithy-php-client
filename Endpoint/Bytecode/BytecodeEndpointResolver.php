@@ -10,9 +10,9 @@ declare(strict_types=1);
 namespace Smithy\Client\Endpoint\Bytecode;
 
 use JmesPath\Env;
-use Smithy\Client\Endpoint\Endpoint;
 use Smithy\Client\Endpoint\EndpointResolverInterface;
 use Smithy\Client\Endpoint\EndpointResolverParams;
+use Smithy\Core\Endpoint\Endpoint;
 use Smithy\Core\Serde\{
     DynamicTraitValue,
     Schema,

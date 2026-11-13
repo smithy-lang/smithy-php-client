@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Endpoint\Bytecode;
 
-use Smithy\Client\Endpoint\{
+use Smithy\Core\Endpoint\{
     Endpoint,
     EndpointAuthScheme
 };

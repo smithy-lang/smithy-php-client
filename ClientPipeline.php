@@ -15,7 +15,6 @@ use Smithy\Client\Auth\{
     ResolvedAuthScheme,
     SignerResult
 };
-use Smithy\Client\Endpoint\Endpoint;
 use Smithy\Client\Endpoint\EndpointResolverParams;
 use Smithy\Client\Interceptor\InputContext;
 use Smithy\Client\Interceptor\InterceptorInterface;
@@ -24,7 +23,8 @@ use Smithy\Client\Interceptor\RequestContext;
 use Smithy\Client\Interceptor\ResponseContext;
 use Smithy\Client\Retry\RetryRequestFlagResolverInterface;
 use Smithy\Client\Retry\TokenAcquisitionFailedException;
-use Smithy\Client\Transport\{
+use Smithy\Core\Endpoint\Endpoint;
+use Smithy\Core\Transport\{
     TransportContext,
     TransportRequestInterface,
     TransportResponseInterface
@@ -81,7 +81,6 @@ final class ClientPipeline
         if ($interceptor->isEmpty()) {
             $transportContext = new TransportContext(
                 $operation,
-                $config,
                 $overrides?->resolveTransportOptions($config->transport)
             );
 
@@ -103,7 +102,6 @@ final class ClientPipeline
             $interceptor->readBeforeExecution($inputCtx);
             $transportContext = new TransportContext(
                 $operation,
-                $config,
                 $overrides?->resolveTransportOptions($config->transport)
             );
 

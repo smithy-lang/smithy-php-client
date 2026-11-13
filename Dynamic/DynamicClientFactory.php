@@ -17,7 +17,6 @@ use Smithy\Client\Endpoint\{
     Bytecode\BytecodeEndpointResolver,
     Bytecode\Compiler\BddCompiler,
     Bytecode\RulesFunctionInterface,
-    Endpoint,
     EndpointResolverInterface,
     EndpointResolverParams,
     StaticEndpointResolver
@@ -26,7 +25,8 @@ use Smithy\Client\Interceptor\InterceptorChain;
 use Smithy\Client\Plugin\PluginCollection;
 use Smithy\Client\Protocol\ProtocolResolver;
 use Smithy\Client\Retry\RetryStrategyInterface;
-use Smithy\Client\Transport\TransportInterface;
+use Smithy\Core\Endpoint\Endpoint;
+use Smithy\Core\Transport\TransportInterface;
 use Smithy\Core\Model\SmithyModel;
 use Smithy\Http\Client\HttpClientInterface;
 use Smithy\Protocol\ProtocolInterface;

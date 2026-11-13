@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Auth;
 
-use Smithy\Client\Transport\TransportRequestInterface;
+use Smithy\Core\Transport\TransportRequestInterface;
 use Smithy\Http\Message\HttpTransportRequest;
 
 /**

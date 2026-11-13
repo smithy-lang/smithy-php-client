@@ -11,7 +11,7 @@ namespace Smithy\Client\Interceptor;
 
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\StreamInterface;
-use Smithy\Client\Transport\TransportRequestInterface;
+use Smithy\Core\Transport\TransportRequestInterface;
 use Smithy\Core\Serde\Schema;
 use Smithy\Http\Message\{
     AsyncRequestStreamInterface,

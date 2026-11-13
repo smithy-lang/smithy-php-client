@@ -29,7 +29,7 @@ use Smithy\Client\Protocol\{
 };
 use Smithy\Client\Retry\NoRetryStrategy;
 use Smithy\Client\Retry\RetryStrategyInterface;
-use Smithy\Client\Transport\TransportInterface;
+use Smithy\Core\Transport\TransportInterface;
 use Smithy\Core\Shape\ServiceInterface;
 use Smithy\Protocol\ProtocolInterface;
 

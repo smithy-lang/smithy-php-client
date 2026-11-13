@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Endpoint;
 
+use Smithy\Core\Endpoint\Endpoint;
+
 /**
  * Resolve an endpoint for an operation.
  *

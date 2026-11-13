@@ -14,7 +14,7 @@ use Smithy\Client\Auth\{
     IdentityResolverInterface,
     ResolvedAuthScheme
 };
-use Smithy\Client\Transport\TransportRequestInterface;
+use Smithy\Core\Transport\TransportRequestInterface;
 
 /**
  * Values resolved while preparing one transmission attempt.

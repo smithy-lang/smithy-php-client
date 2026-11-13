@@ -10,7 +10,7 @@ declare(strict_types=1);
 namespace Smithy\Client\Interceptor;
 
 use Smithy\Client\ClientConfig;
-use Smithy\Client\Transport\{
+use Smithy\Core\Transport\{
     TransportRequestInterface,
     TransportResponseInterface
 };

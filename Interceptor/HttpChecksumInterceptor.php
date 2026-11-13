@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Interceptor;
 
-use Smithy\Client\Transport\TransportRequestInterface;
+use Smithy\Core\Transport\TransportRequestInterface;
 use Smithy\Core\Serde\Schema;
 use Smithy\Http\Message\{
     AsyncRequestStreamInterface,

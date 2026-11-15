@@ -10,7 +10,6 @@ declare(strict_types=1);
 namespace Smithy\Client\Dynamic;
 
 use Smithy\Core\Serde\{
-    DynamicTraitValue,
     Schema,
     SerializableStructInterface,
     TimestampFormat
@@ -131,10 +130,7 @@ final class DocumentFactory
 
             $members[$index] = $this->coerceDefault(
                 $member,
-                $this->getTraitValue(
-                    $member,
-                    self::DEFAULT_TRAIT
-                ),
+                $member->getTraitById(self::DEFAULT_TRAIT),
                 $memberPath
             );
         }
@@ -212,10 +208,7 @@ final class DocumentFactory
             } elseif ($this->shouldApplyDefault($target, $member)) {
                 $members[$index] = $this->coerceDefault(
                     $member,
-                    $this->getTraitValue(
-                        $member,
-                        self::DEFAULT_TRAIT
-                    ),
+                    $member->getTraitById(self::DEFAULT_TRAIT),
                     $path . '.' . $member->memberName
                 );
             }
@@ -466,10 +459,7 @@ final class DocumentFactory
             if ($this->shouldApplyDefault($target, $member)) {
                 $members[$index] = $this->coerceDefault(
                     $member,
-                    $this->getTraitValue(
-                        $member,
-                        self::DEFAULT_TRAIT
-                    ),
+                    $member->getTraitById(self::DEFAULT_TRAIT),
                     $path . '.' . $name
                 );
             } elseif ($member->hasTrait(Schema::T_REQUIRED)) {
@@ -493,10 +483,7 @@ final class DocumentFactory
         return !$container->hasTraitById(self::INPUT_TRAIT)
             && !$member->hasTraitById(self::CLIENT_OPTIONAL_TRAIT)
             && $member->hasTraitById(self::DEFAULT_TRAIT)
-            && $this->getTraitValue(
-                $member,
-                self::DEFAULT_TRAIT
-            ) !== null;
+            && $member->getTraitById(self::DEFAULT_TRAIT) !== null;
     }
 
     /**
@@ -1007,21 +994,6 @@ final class DocumentFactory
         }
 
         return $document;
-    }
-
-    /**
-     * Return the raw value of an effective runtime trait.
-     */
-    private function getTraitValue(
-        Schema $schema,
-        string $traitId
-    ): mixed
-    {
-        $value = $schema->getTraitById($traitId);
-
-        return $value instanceof DynamicTraitValue
-            ? $value->value
-            : $value;
     }
 
     /**

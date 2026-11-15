@@ -14,7 +14,6 @@ use Smithy\Client\ClientConfig;
 use Smithy\Client\Endpoint\EndpointResolverInterface;
 use Smithy\Core\Endpoint\Endpoint;
 use Smithy\Core\Serde\{
-    DynamicTraitValue,
     Schema,
     SerializableStructInterface
 };
@@ -369,9 +368,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
             $operation->getInputSchema()->getMembersByIndex()
                 as $member
         ) {
-            $trait = self::traitValue(
-                $member->getDirectTraitById(self::CONTEXT_PARAM_TRAIT)
-            );
+            $trait = $member->getDirectTraitById(self::CONTEXT_PARAM_TRAIT);
             $name = \is_array($trait) ? ($trait['name'] ?? null) : null;
             if (\is_string($name)
                 && isset($this->inputRegisterMap[$name])
@@ -382,10 +379,8 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
 
         $operationSchema = $operation->getSchema();
         $paths = [];
-        $pathTrait = self::traitValue(
-            $operationSchema->getDirectTraitById(
-                self::OPERATION_CONTEXT_PARAMS_TRAIT
-            )
+        $pathTrait = $operationSchema->getDirectTraitById(
+            self::OPERATION_CONTEXT_PARAMS_TRAIT
         );
         if (\is_array($pathTrait)) {
             foreach ($pathTrait as $name => $definition) {
@@ -402,10 +397,8 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
         }
 
         $static = [];
-        $staticTrait = self::traitValue(
-            $operationSchema->getDirectTraitById(
-                self::STATIC_CONTEXT_PARAMS_TRAIT
-            )
+        $staticTrait = $operationSchema->getDirectTraitById(
+            self::STATIC_CONTEXT_PARAMS_TRAIT
         );
         if (\is_array($staticTrait)) {
             foreach ($staticTrait as $name => $definition) {
@@ -482,16 +475,6 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
         foreach ($context[2] as $name => $value) {
             $inputs[$name] = $value;
         }
-    }
-
-    /**
-     * Unwrap a runtime-preserved trait value.
-     */
-    private static function traitValue(mixed $trait): mixed
-    {
-        return $trait instanceof DynamicTraitValue
-            ? $trait->value
-            : $trait;
     }
 
     /**

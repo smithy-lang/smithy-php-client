@@ -13,6 +13,7 @@ use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\StreamInterface;
 use Smithy\Core\Transport\TransportRequestInterface;
 use Smithy\Core\Serde\Schema;
+use Smithy\Core\Shape\OperationInterface;
 use Smithy\Http\Message\{
     AsyncRequestStreamInterface,
     HttpTransportRequest,
@@ -34,6 +35,20 @@ final class RequestCompressionInterceptor extends AbstractInterceptor
         private readonly bool $disabled = false,
         private readonly int $minCompressionSizeBytes = 10240
     ) {}
+
+    /** @inheritDoc */
+    public function appliesTo(OperationInterface $operation): bool
+    {
+        if ($this->disabled) {
+            return false;
+        }
+
+        $encodings = $operation->getSchema()->getTrait(
+            Schema::T_REQUEST_COMPRESSION
+        );
+
+        return $encodings !== null && $encodings !== [];
+    }
 
     /**
      * @inheritDoc

@@ -18,6 +18,9 @@ final class AnonymousIdentityResolver implements IdentityResolverInterface
 {
     private static ?self $instance = null;
 
+    /** @var IdentityResult<AnonymousIdentity> */
+    private readonly IdentityResult $result;
+
     /**
      * Return the shared anonymous identity resolver.
      */
@@ -26,12 +29,15 @@ final class AnonymousIdentityResolver implements IdentityResolverInterface
         return self::$instance ??= new self();
     }
 
-    private function __construct() {}
+    private function __construct()
+    {
+        $this->result = IdentityResult::success(AnonymousIdentity::instance());
+    }
 
     /** @inheritDoc */
     public function resolveIdentity(array $properties = []): IdentityResult
     {
-        return IdentityResult::success(AnonymousIdentity::instance());
+        return $this->result;
     }
 
     /** @inheritDoc */

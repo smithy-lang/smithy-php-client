@@ -36,8 +36,8 @@ final class IdentityChain implements IdentityChainInterface
     /** @var list<string> */
     private readonly array $detectedSlots;
 
-    /** @var TIdentity|null */
-    private ?IdentityInterface $cachedIdentity = null;
+    /** @var IdentityResult<TIdentity>|null */
+    private ?IdentityResult $cachedResult = null;
 
     /** @var array<string, mixed>|null */
     private ?array $cachedIdentityProperties = null;
@@ -88,12 +88,12 @@ final class IdentityChain implements IdentityChainInterface
     /** @inheritDoc */
     public function resolveIdentity(array $properties = []): IdentityResult
     {
-        if ($this->cachedIdentity !== null
+        if ($this->cachedResult !== null
             && $this->cachedIdentityProperties === $properties
             && !$this->refreshRequired
-            && !$this->requiresRefresh($this->cachedIdentity)
+            && !$this->requiresRefresh($this->cachedResult->identity)
         ) {
-            return IdentityResult::success($this->cachedIdentity);
+            return $this->cachedResult;
         }
 
         if ($this->registrations === []) {
@@ -120,7 +120,7 @@ final class IdentityChain implements IdentityChainInterface
                 continue;
             }
 
-            $this->cachedIdentity = $identity;
+            $this->cachedResult = $result;
             $this->cachedIdentityProperties = $properties;
             $this->lastResolvedMetadata = $registration['metadata'];
             $this->refreshRequired = false;
@@ -139,9 +139,9 @@ final class IdentityChain implements IdentityChainInterface
     /** @inheritDoc */
     public function invalidate(IdentityInterface $rejectedIdentity): void
     {
-        if ($this->cachedIdentity !== null
+        if ($this->cachedResult !== null
             && ($this->identityMatcher)(
-                $this->cachedIdentity,
+                $this->cachedResult->identity,
                 $rejectedIdentity
             )
         ) {

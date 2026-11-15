@@ -15,6 +15,7 @@ use Smithy\Core\Transport\{
     TransportResponseInterface
 };
 use Smithy\Core\Serde\SerializableStructInterface;
+use Smithy\Core\Shape\OperationInterface;
 
 /**
  * Execute an ordered interceptor sequence as one interceptor.
@@ -23,30 +24,68 @@ use Smithy\Core\Serde\SerializableStructInterface;
  * registration order. Modify hooks pass their result to the next
  * interceptor. Completion hooks also carry the current error: rethrowing
  * that same error forwards it, while returning an output suppresses it.
+ *
+ * A hook skips interceptors that inherit it unchanged from
+ * {@see AbstractInterceptor}, because the inherited hook is a no-op.
  */
-final readonly class InterceptorChain implements InterceptorInterface
+final class InterceptorChain implements InterceptorInterface
 {
-    /** @var list<InterceptorInterface> */
-    private array $interceptors;
+    /** Hooks dispatched through the per-hook subscriber lists. */
+    private const HOOKS = [
+        'modifyBeforeCall',
+        'readBeforeExecution',
+        'modifyBeforeSerialization',
+        'readBeforeSerialization',
+        'readAfterSerialization',
+        'modifyBeforeRetryLoop',
+        'readBeforeAttempt',
+        'modifyBeforeSigning',
+        'readBeforeSigning',
+        'readAfterSigning',
+        'modifyBeforeTransmit',
+        'readBeforeTransmit',
+        'readAfterTransmit',
+        'modifyBeforeDeserialization',
+        'readBeforeDeserialization',
+        'readAfterDeserialization',
+        'modifyBeforeAttemptCompletion',
+        'readAfterAttempt',
+        'modifyBeforeCompletion',
+        'readAfterExecution'
+    ];
+
+    /** @var array<class-string, list<string>> Overridden hooks by interceptor class */
+    private static array $hooksByClass = [];
 
     /** @var list<InterceptorInterface> */
-    private array $callInterceptors;
-
-    private bool $interceptsCalls;
+    private readonly array $interceptors;
+    /** @var list<InterceptorInterface> */
+    private readonly array $callInterceptors;
+    private readonly bool $interceptsCalls;
+    /** @var array<string, list<InterceptorInterface>> Subscribers by hook name */
+    private readonly array $byHook;
+    /** @var array<string, self|false> Chains by operation identity, false for this chain */
+    private array $byOperation = [];
 
     /** @param InterceptorInterface ...$interceptors Interceptors in execution order. */
     public function __construct(InterceptorInterface ...$interceptors)
     {
         $this->interceptors = $interceptors;
         $callInterceptors = [];
+        $byHook = \array_fill_keys(self::HOOKS, []);
         foreach ($interceptors as $interceptor) {
             if ($interceptor->interceptCalls()) {
                 $callInterceptors[] = $interceptor;
+            }
+
+            foreach (self::subscribedHooks($interceptor) as $hook) {
+                $byHook[$hook][] = $interceptor;
             }
         }
 
         $this->callInterceptors = $callInterceptors;
         $this->interceptsCalls = $callInterceptors !== [];
+        $this->byHook = $byHook;
     }
 
     /**
@@ -89,11 +128,41 @@ final readonly class InterceptorChain implements InterceptorInterface
         return $this->interceptors === [];
     }
 
+    /**
+     * Return the chain of interceptors that apply to an operation.
+     *
+     * Drops each {@see AbstractInterceptor} whose {@see AbstractInterceptor::appliesTo()}
+     * returns false. Results are cached by operation runtime identity.
+     */
+    public function forOperation(OperationInterface $operation): self
+    {
+        $identity = $operation->getRuntimeIdentity();
+        $chain = $this->byOperation[$identity] ?? null;
+        if ($chain === null) {
+            $kept = [];
+            foreach ($this->interceptors as $interceptor) {
+                if (!$interceptor instanceof AbstractInterceptor
+                    || $interceptor->appliesTo($operation)
+                ) {
+                    $kept[] = $interceptor;
+                }
+            }
+
+            // Store false instead of $this to avoid a reference cycle.
+            $chain = $this->byOperation[$identity] =
+                \count($kept) === \count($this->interceptors)
+                    ? false
+                    : new self(...$kept);
+        }
+
+        return $chain === false ? $this : $chain;
+    }
+
     /** @inheritDoc */
     public function modifyBeforeCall(CallContext $ctx): ClientConfig
     {
         $config = $ctx->config;
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             $config = $interceptor->modifyBeforeCall(
                 $ctx->withConfig($config)
             );
@@ -143,7 +212,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     public function readBeforeExecution(InputContext $ctx): void
     {
         $error = null;
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             try {
                 $interceptor->readBeforeExecution($ctx);
             } catch (\Throwable $e) {
@@ -162,7 +231,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     ): SerializableStructInterface
     {
         $input = $ctx->input;
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             $input = $interceptor->modifyBeforeSerialization(
                 $ctx->withInput($input)
             );
@@ -174,7 +243,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     /** @inheritDoc */
     public function readBeforeSerialization(InputContext $ctx): void
     {
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             $interceptor->readBeforeSerialization($ctx);
         }
     }
@@ -182,7 +251,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     /** @inheritDoc */
     public function readAfterSerialization(RequestContext $ctx): void
     {
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             $interceptor->readAfterSerialization($ctx);
         }
     }
@@ -193,7 +262,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     ): TransportRequestInterface
     {
         $request = $ctx->request;
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             $request = $interceptor->modifyBeforeRetryLoop(
                 $ctx->withRequest($request)
             );
@@ -206,7 +275,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     public function readBeforeAttempt(RequestContext $ctx): void
     {
         $error = null;
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             try {
                 $interceptor->readBeforeAttempt($ctx);
             } catch (\Throwable $e) {
@@ -225,7 +294,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     ): TransportRequestInterface
     {
         $request = $ctx->request;
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             $request = $interceptor->modifyBeforeSigning(
                 $ctx->withRequest($request)
             );
@@ -237,7 +306,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     /** @inheritDoc */
     public function readBeforeSigning(RequestContext $ctx): void
     {
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             $interceptor->readBeforeSigning($ctx);
         }
     }
@@ -245,7 +314,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     /** @inheritDoc */
     public function readAfterSigning(RequestContext $ctx): void
     {
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             $interceptor->readAfterSigning($ctx);
         }
     }
@@ -256,7 +325,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     ): TransportRequestInterface
     {
         $request = $ctx->request;
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             $request = $interceptor->modifyBeforeTransmit(
                 $ctx->withRequest($request)
             );
@@ -268,7 +337,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     /** @inheritDoc */
     public function readBeforeTransmit(RequestContext $ctx): void
     {
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             $interceptor->readBeforeTransmit($ctx);
         }
     }
@@ -276,7 +345,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     /** @inheritDoc */
     public function readAfterTransmit(ResponseContext $ctx): void
     {
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             $interceptor->readAfterTransmit($ctx);
         }
     }
@@ -287,7 +356,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     ): TransportResponseInterface
     {
         $response = $ctx->response;
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             $response = $interceptor->modifyBeforeDeserialization(
                 $ctx->withResponse($response)
             );
@@ -299,7 +368,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     /** @inheritDoc */
     public function readBeforeDeserialization(ResponseContext $ctx): void
     {
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             $interceptor->readBeforeDeserialization($ctx);
         }
     }
@@ -310,7 +379,7 @@ final readonly class InterceptorChain implements InterceptorInterface
         ?\Throwable $error
     ): void
     {
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             $interceptor->readAfterDeserialization($ctx, $error);
         }
     }
@@ -322,7 +391,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     ): SerializableStructInterface
     {
         $output = $ctx->output;
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             try {
                 $output = $interceptor->modifyBeforeAttemptCompletion(
                     $ctx->withOutput($output),
@@ -350,7 +419,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     ): void
     {
         $originalError = $error;
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             try {
                 $interceptor->readAfterAttempt($ctx, $error);
             } catch (\Throwable $e) {
@@ -370,7 +439,7 @@ final readonly class InterceptorChain implements InterceptorInterface
     ): SerializableStructInterface
     {
         $output = $ctx->output;
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             try {
                 $output = $interceptor->modifyBeforeCompletion(
                     $ctx->withOutput($output),
@@ -397,7 +466,7 @@ final readonly class InterceptorChain implements InterceptorInterface
         ?\Throwable $error
     ): void
     {
-        foreach ($this->interceptors as $interceptor) {
+        foreach ($this->byHook[__FUNCTION__] as $interceptor) {
             try {
                 $interceptor->readAfterExecution($ctx, $error);
             } catch (\Throwable $e) {
@@ -408,5 +477,36 @@ final readonly class InterceptorChain implements InterceptorInterface
         if ($error !== null) {
             throw $error;
         }
+    }
+
+    /**
+     * Return the hooks an interceptor overrides.
+     *
+     * Interceptors that do not extend {@see AbstractInterceptor} subscribe to every hook.
+     *
+     * @return list<string>
+     */
+    private static function subscribedHooks(
+        InterceptorInterface $interceptor
+    ): array
+    {
+        if (!$interceptor instanceof AbstractInterceptor) {
+            return self::HOOKS;
+        }
+
+        $class = $interceptor::class;
+        if (isset(self::$hooksByClass[$class])) {
+            return self::$hooksByClass[$class];
+        }
+
+        $hooks = [];
+        foreach (self::HOOKS as $hook) {
+            $declaringClass = (new \ReflectionMethod($class, $hook))->class;
+            if ($declaringClass !== AbstractInterceptor::class) {
+                $hooks[] = $hook;
+            }
+        }
+
+        return self::$hooksByClass[$class] = $hooks;
     }
 }

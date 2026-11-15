@@ -883,8 +883,10 @@ final readonly class Evaluator
      *
      * Callers must gate on `\is_string()` - the parameter is typed
      * `string` and PHP will throw a `TypeError` on non-string input.
+     *
+     * @internal Shared with {@see StdFunctions}.
      */
-    private static function substring(string $s, int $start, int $end, bool $reverse): ?string
+    public static function substring(string $s, int $start, int $end, bool $reverse): ?string
     {
         $len = \strlen($s);
         if ($start >= $end
@@ -928,8 +930,10 @@ final readonly class Evaluator
 
     /**
      * Callers must gate on `\is_string()` - see {@see substring()} note.
+     *
+     * @internal Shared with {@see StdFunctions}.
      */
-    private static function isValidHostLabel(string $s, bool $allowDots): bool
+    public static function isValidHostLabel(string $s, bool $allowDots): bool
     {
         if ($s === '') {
             return false;
@@ -961,8 +965,10 @@ final readonly class Evaluator
      * a null-cast to `""`.
      *
      * @return list<string>|null
+     *
+     * @internal Shared with {@see StdFunctions}.
      */
-    private static function split(mixed $s, string $delim, int $limit): ?array
+    public static function split(mixed $s, string $delim, int $limit): ?array
     {
         if (!\is_string($s) || $delim === '' || $limit < 0) {
             return null;
@@ -995,8 +1001,10 @@ final readonly class Evaluator
      *     normalizedPath:string,
      *     isIp:bool
      * }|null
+     *
+     * @internal Shared with {@see StdFunctions}.
      */
-    private static function parseUrl(string $url): ?array
+    public static function parseUrl(string $url): ?array
     {
         if (!\preg_match('/^https?:\/\/[^\s\/?#]+(?:[\/?#]|$)/i', $url)) {
             return null;

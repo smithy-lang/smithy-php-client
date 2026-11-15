@@ -32,6 +32,12 @@ final class IdempotencyTokenInterceptor extends AbstractInterceptor
         private readonly ?\Closure $tokenProvider = null
     ) {}
 
+    /** @inheritDoc */
+    public function appliesTo(OperationInterface $operation): bool
+    {
+        return $this->resolveTokenMember($operation) !== null;
+    }
+
     /**
      * Fill an unset idempotency token member.
      *

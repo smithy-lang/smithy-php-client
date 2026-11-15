@@ -45,6 +45,12 @@ final class DocumentFactory
     private const INPUT_TRAIT = 'smithy.api#input';
 
     /**
+     * Whether nested coercion builds child paths eagerly during an error
+     * retry. Coercion is synchronous, so one flag per factory is safe.
+     */
+    private bool $buildPaths = false;
+
+    /**
      * Create a schema-backed document.
      *
      * @throws InvalidShapeValueException When the value is incompatible.
@@ -195,13 +201,14 @@ final class DocumentFactory
         $members = \array_fill(0, $target->getMemberCount(), null);
         foreach ($target->getMembersByIndex() as $index => $member) {
             $memberValue = $value->getMemberValue($member);
-            $memberPath = $path . '.' . $member->memberName;
             if ($memberValue !== null) {
-                $members[$index] = $this->materializeDecodedValue(
-                    $member,
-                    $memberValue,
-                    $memberPath
-                );
+                $members[$index] = self::isAggregate($member)
+                    ? $this->materializeDecodedValue(
+                        $member,
+                        $memberValue,
+                        $path . '.' . $member->memberName
+                    )
+                    : $memberValue;
             } elseif ($this->shouldApplyDefault($target, $member)) {
                 $members[$index] = $this->coerceDefault(
                     $member,
@@ -209,7 +216,7 @@ final class DocumentFactory
                         $member,
                         self::DEFAULT_TRAIT
                     ),
-                    $memberPath
+                    $path . '.' . $member->memberName
                 );
             }
         }
@@ -267,7 +274,7 @@ final class DocumentFactory
         }
 
         $member = $schema->resolveTarget()->getListMember();
-        if ($member === null) {
+        if ($member === null || !self::isAggregate($member)) {
             return $value;
         }
 
@@ -298,7 +305,7 @@ final class DocumentFactory
         }
 
         $member = $schema->resolveTarget()->getMapValue();
-        if ($member === null) {
+        if ($member === null || !self::isAggregate($member)) {
             return $value;
         }
 
@@ -435,22 +442,23 @@ final class DocumentFactory
         );
         foreach ($target->getMembersByIndex() as $index => $member) {
             $name = $member->memberName;
-            $memberPath = $path . '.' . $name;
             if (\array_key_exists($name, $value)) {
                 $memberValue = $value[$name];
                 if ($memberValue === null
                     && $member->hasTrait(Schema::T_REQUIRED)
                 ) {
                     throw new InvalidShapeValueException(
-                        "Required member {$memberPath} cannot be null."
+                        "Required member {$path}.{$name} cannot be null."
                     );
                 }
                 $members[$index] = $memberValue === null
                     ? null
-                    : $this->coerce(
+                    : $this->coerceChild(
                         $member,
                         $memberValue,
-                        $memberPath
+                        $path,
+                        $name,
+                        true
                     );
                 continue;
             }
@@ -462,11 +470,11 @@ final class DocumentFactory
                         $member,
                         self::DEFAULT_TRAIT
                     ),
-                    $memberPath
+                    $path . '.' . $name
                 );
             } elseif ($member->hasTrait(Schema::T_REQUIRED)) {
                 throw new InvalidShapeValueException(
-                    "Missing required member {$memberPath}."
+                    "Missing required member {$path}.{$name}."
                 );
             }
         }
@@ -647,17 +655,16 @@ final class DocumentFactory
         $sparse = $schema->hasTrait(Schema::T_SPARSE);
         $items = [];
         foreach ($value as $index => $item) {
-            $itemPath = $path . '[' . $index . ']';
             if ($item === null) {
                 if (!$sparse) {
                     throw new InvalidShapeValueException(
-                        "Null value is not allowed at {$itemPath}."
+                        "Null value is not allowed at {$path}[{$index}]."
                     );
                 }
                 $items[] = null;
                 continue;
             }
-            $items[] = $this->coerce($member, $item, $itemPath);
+            $items[] = $this->coerceChild($member, $item, $path, $index);
         }
 
         return $items;
@@ -693,24 +700,98 @@ final class DocumentFactory
         $entries = [];
         foreach ($value as $key => $entry) {
             $key = (string) $key;
-            $entryPath = $path . '[' . \var_export($key, true) . ']';
             if ($entry === null) {
                 if (!$sparse) {
                     throw new InvalidShapeValueException(
-                        "Null value is not allowed at {$entryPath}."
+                        'Null value is not allowed at '
+                            . self::childPath($path, $key, false)
+                            . '.'
                     );
                 }
                 $entries[$key] = null;
                 continue;
             }
-            $entries[$key] = $this->coerce(
+            $entries[$key] = $this->coerceChild(
                 $valueSchema,
                 $entry,
-                $entryPath
+                $path,
+                $key
             );
         }
 
         return $entries;
+    }
+
+    /**
+     * Coerce a nested value, building its path only when coercion fails.
+     *
+     * Only the outermost failing child retries, with paths built eagerly, so
+     * the error path stays linear in nesting depth.
+     *
+     * @param int|string $key List index, map key, or member name.
+     * @param bool $isMember Whether `$key` is a structure member name.
+     */
+    private function coerceChild(
+        Schema $schema,
+        mixed $value,
+        string $path,
+        int|string $key,
+        bool $isMember = false
+    ): mixed
+    {
+        if ($this->buildPaths) {
+            return $this->coerce(
+                $schema,
+                $value,
+                self::childPath($path, $key, $isMember)
+            );
+        }
+
+        try {
+            return $this->coerce($schema, $value, $path);
+        } catch (InvalidShapeValueException) {
+            // Coercion is deterministic, so the retry fails again with the
+            // child's path in the message.
+            $this->buildPaths = true;
+            try {
+                return $this->coerce(
+                    $schema,
+                    $value,
+                    self::childPath($path, $key, $isMember)
+                );
+            } finally {
+                $this->buildPaths = false;
+            }
+        }
+    }
+
+    /**
+     * Return the path of a list item, map entry, or structure member.
+     */
+    private static function childPath(
+        string $path,
+        int|string $key,
+        bool $isMember
+    ): string
+    {
+        if ($isMember) {
+            return $path . '.' . $key;
+        }
+
+        return \is_int($key)
+            ? $path . '[' . $key . ']'
+            : $path . '[' . \var_export($key, true) . ']';
+    }
+
+    /**
+     * Return whether decoded values of a schema need materialization.
+     */
+    private static function isAggregate(Schema $schema): bool
+    {
+        return $schema->type === ShapeType::Structure->value
+            || $schema->type === ShapeType::Union->value
+            || $schema->type === ShapeType::List_->value
+            || $schema->type === ShapeType::Map->value;
     }
 
     /**

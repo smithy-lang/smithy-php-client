@@ -19,13 +19,14 @@ use Smithy\Protocol\{
 /**
  * Resolve modeled protocols in deterministic preference order.
  */
-final readonly class ProtocolResolver implements ProtocolResolverInterface
+final class ProtocolResolver implements ProtocolResolverInterface
 {
-    /** @var array<string, ProtocolInterface> */
-    private array $protocols;
+    private static ?self $defaults = null;
 
+    /** @var array<string, ProtocolInterface> */
+    private readonly array $protocols;
     /** @var list<string> */
-    private array $preference;
+    private readonly array $preference;
 
     /**
      * @param array<string, ProtocolInterface> $protocols
@@ -41,9 +42,21 @@ final readonly class ProtocolResolver implements ProtocolResolverInterface
     }
 
     /**
-     * Return the protocols included with the generic runtime.
+     * Return the shared resolver for protocols included with the runtime.
+     *
+     * Protocols cache per-operation state, so share this resolver only among
+     * clients with a fixed set of operations. Use {@see createDefaults()} for
+     * clients that create operations at runtime.
      */
     public static function defaults(): self
+    {
+        return self::$defaults ??= self::createDefaults();
+    }
+
+    /**
+     * Create a resolver with new instances of the included protocols.
+     */
+    public static function createDefaults(): self
     {
         return new self([
             RpcV2CborProtocol::ID => new RpcV2CborProtocol(),

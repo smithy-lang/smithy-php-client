@@ -61,7 +61,4 @@ final class HttpBearerAuthSigner implements SignerInterface
             )
         );
     }
-
-    /** @inheritDoc */
-    public function close(): void {}
 }

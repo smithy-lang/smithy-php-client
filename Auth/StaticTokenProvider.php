@@ -16,7 +16,8 @@ namespace Smithy\Client\Auth;
  */
 final readonly class StaticTokenProvider implements IdentityResolverInterface
 {
-    private BearerToken $token;
+    /** @var IdentityResult<BearerToken> */
+    private IdentityResult $result;
 
     /**
      * Create a static token provider.
@@ -27,9 +28,11 @@ final readonly class StaticTokenProvider implements IdentityResolverInterface
         ?float $expirationTime = null
     )
     {
-        $this->token = \is_string($token)
-            ? new BearerToken($token, $expirationTime)
-            : $token;
+        $this->result = IdentityResult::success(
+            \is_string($token)
+                ? new BearerToken($token, $expirationTime)
+                : $token
+        );
     }
 
     /** @inheritDoc */
@@ -37,7 +40,7 @@ final readonly class StaticTokenProvider implements IdentityResolverInterface
         array $properties = []
     ): IdentityResult
     {
-        return IdentityResult::success($this->token);
+        return $this->result;
     }
 
     /** @inheritDoc */

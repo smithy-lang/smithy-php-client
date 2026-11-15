@@ -9,7 +9,10 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Endpoint;
 
+use Smithy\Client\ClientConfig;
 use Smithy\Core\Endpoint\Endpoint;
+use Smithy\Core\Serde\SerializableStructInterface;
+use Smithy\Core\Shape\OperationInterface;
 
 /**
  * Return the same {@see Endpoint} for every operation.
@@ -27,7 +30,11 @@ final class StaticEndpointResolver implements EndpointResolverInterface
     ) {}
 
     /** @inheritDoc */
-    public function resolveEndpoint(EndpointResolverParams $params): Endpoint
+    public function resolveEndpoint(
+        OperationInterface $operation,
+        SerializableStructInterface $input,
+        ClientConfig $config
+    ): Endpoint
     {
         return $this->endpoint;
     }

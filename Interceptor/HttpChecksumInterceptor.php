@@ -11,6 +11,7 @@ namespace Smithy\Client\Interceptor;
 
 use Smithy\Core\Transport\TransportRequestInterface;
 use Smithy\Core\Serde\Schema;
+use Smithy\Core\Shape\OperationInterface;
 use Smithy\Http\Message\{
     AsyncRequestStreamInterface,
     HttpTransportRequest,
@@ -25,6 +26,14 @@ use Smithy\Http\Message\{
  */
 final class HttpChecksumInterceptor extends AbstractInterceptor
 {
+    /** @inheritDoc */
+    public function appliesTo(OperationInterface $operation): bool
+    {
+        return $operation->getSchema()->hasTrait(
+            Schema::T_HTTP_CHECKSUM_REQUIRED
+        );
+    }
+
     /**
      * @inheritDoc
      *

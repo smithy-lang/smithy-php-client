@@ -40,7 +40,4 @@ final class NullSigner implements SignerInterface
     {
         return new SignerResult($request);
     }
-
-    /** @inheritDoc */
-    public function close(): void {}
 }

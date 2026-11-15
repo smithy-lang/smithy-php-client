@@ -84,7 +84,8 @@ class DynamicClient extends AbstractClient
             $this->converter,
             $serviceId,
             $protocolId,
-            $errorDiscriminatorTraits
+            $errorDiscriminatorTraits,
+            $this->documentFactory
         );
 
         parent::__construct(

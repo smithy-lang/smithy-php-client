@@ -15,6 +15,7 @@ use Smithy\Core\Transport\{
     TransportResponseInterface
 };
 use Smithy\Core\Serde\SerializableStructInterface;
+use Smithy\Core\Shape\OperationInterface;
 
 /**
  * No-op base class for {@see InterceptorInterface} implementations.
@@ -42,6 +43,18 @@ use Smithy\Core\Serde\SerializableStructInterface;
  */
 abstract class AbstractInterceptor implements InterceptorInterface
 {
+    /**
+     * Return whether this interceptor runs for an operation.
+     *
+     * {@see InterceptorChain::forOperation()} drops interceptors that return false, so none of
+     * their hooks run for that operation. Return false only when every hook would leave the
+     * operation unchanged.
+     */
+    public function appliesTo(OperationInterface $operation): bool
+    {
+        return true;
+    }
+
     /** @inheritDoc */
     public function modifyBeforeCall(CallContext $ctx): ClientConfig
     {

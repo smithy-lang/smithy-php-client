@@ -17,9 +17,6 @@ use Smithy\Core\Transport\TransportRequestInterface;
  * Called once per attempt from inside the retry loop, after any
  * `modifyBeforeSigning` interceptor has run. Retried attempts sign
  * fresh. Timestamps and nonces are recomputed each time.
- *
- * Signers are attempt-scoped. The pipeline closes the signer after each
- * signing attempt, including when signing fails.
  */
 interface SignerInterface
 {
@@ -33,14 +30,4 @@ interface SignerInterface
         IdentityInterface $identity,
         array $properties = []
     ): SignerResult;
-
-    /**
-     * Release resources owned by this signer.
-     *
-     * Implementations without resources should use a no-op. Calling this
-     * method more than once must be safe.
-     *
-     * @return void
-     */
-    public function close(): void;
 }

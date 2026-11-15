@@ -18,7 +18,6 @@ use Smithy\Client\Endpoint\{
     Bytecode\Compiler\BddCompiler,
     Bytecode\RulesFunctionInterface,
     EndpointResolverInterface,
-    EndpointResolverParams,
     StaticEndpointResolver
 };
 use Smithy\Client\Interceptor\InterceptorChain;
@@ -101,7 +100,9 @@ final class DynamicClientFactory
             endpointAuthSchemeIds: $endpointAuthSchemeIds,
             protocolPreference: $protocolPreference
         ));
-        $protocolResolver = ProtocolResolver::defaults()->merge(
+        // Dynamic operations have unique identities, so protocol caches must
+        // not outlive the client.
+        $protocolResolver = ProtocolResolver::createDefaults()->merge(
             $runtime->getProtocolResolver()
         );
         $supportedAuthSchemes = $runtime->getAuthSchemes();
@@ -207,7 +208,7 @@ final class DynamicClientFactory
     ): array
     {
         $configured = $context[
-            EndpointResolverParams::CONTEXT_PARAMETERS
+            EndpointResolverInterface::CONTEXT_PARAMETERS
         ] ?? [];
         if (!\is_array($configured)) {
             throw new \InvalidArgumentException(
@@ -226,7 +227,7 @@ final class DynamicClientFactory
             return $context;
         }
 
-        $context[EndpointResolverParams::CONTEXT_PARAMETERS] = [
+        $context[EndpointResolverInterface::CONTEXT_PARAMETERS] = [
             ...$configured,
             ...$parameters
         ];

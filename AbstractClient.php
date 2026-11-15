@@ -100,11 +100,15 @@ abstract class AbstractClient implements ClientInterface
         $callConfig = $overrides === null || $overrides->plugins->isEmpty()
             ? $this->config
             : $overrides->plugins->apply($this->config);
-        $interceptor = $callConfig->interceptorChain;
-        $callConfig = $interceptor->modifyBeforeCall(
-            new CallContext($operation, $input, $callConfig)
-        );
-        $interceptor = $callConfig->interceptorChain;
+        $interceptor = $callConfig->interceptorChain->forOperation($operation);
+        if (!$interceptor->isEmpty()) {
+            $callConfig = $interceptor->modifyBeforeCall(
+                new CallContext($operation, $input, $callConfig)
+            );
+            $interceptor = $callConfig->interceptorChain
+                ->forOperation($operation);
+        }
+
         $pipeline = $callConfig === $this->config
             ? $this->pipeline
             : new ClientPipeline($callConfig);

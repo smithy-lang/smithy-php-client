@@ -38,14 +38,12 @@ final readonly class RequestOverrideConfig
      * @param int|null $maxAttempts Maximum attempts for this request.
      * @param list<string>|null $authSchemePreference Auth scheme preference.
      * @param PluginCollection $plugins Plugins applied only to this call.
-     * @param array<string, true> $definedOverrides Explicit override keys.
      */
     private function __construct(
         public ?TransportRequestOverrideInterface $transportOverrides,
         public ?int $maxAttempts,
         public ?array $authSchemePreference,
-        public PluginCollection $plugins,
-        private array $definedOverrides
+        public PluginCollection $plugins
     ) {}
 
     /**
@@ -57,7 +55,6 @@ final readonly class RequestOverrideConfig
      */
     public static function fromArray(array $overrides): self
     {
-        $definedOverrides = [];
         foreach ($overrides as $name => $_) {
             if ($name !== self::HTTP
                 && $name !== self::TRANSPORT
@@ -69,8 +66,6 @@ final readonly class RequestOverrideConfig
                     "Unknown request override '{$name}'."
                 );
             }
-
-            $definedOverrides[$name] = true;
         }
 
         $httpOverrides = $overrides[self::HTTP] ?? null;
@@ -129,33 +124,7 @@ final readonly class RequestOverrideConfig
             $transportOverrides,
             $maxAttempts,
             $authSchemePreference,
-            $plugins,
-            $definedOverrides
-        );
-    }
-
-    /**
-     * Return overrides with absent keys inherited from a fallback config.
-     */
-    public function withFallback(self $fallback): self
-    {
-        $useTransport = isset($this->definedOverrides[self::HTTP])
-            || isset($this->definedOverrides[self::TRANSPORT]);
-
-        return new self(
-            $useTransport
-                ? $this->transportOverrides
-                : $fallback->transportOverrides,
-            isset($this->definedOverrides[self::RETRIES])
-                ? $this->maxAttempts
-                : $fallback->maxAttempts,
-            isset($this->definedOverrides[self::AUTH])
-                ? $this->authSchemePreference
-                : $fallback->authSchemePreference,
-            isset($this->definedOverrides[self::PLUGINS])
-                ? $this->plugins
-                : $fallback->plugins,
-            $this->definedOverrides + $fallback->definedOverrides
+            $plugins
         );
     }
 
@@ -168,8 +137,7 @@ final readonly class RequestOverrideConfig
             $this->transportOverrides,
             $this->maxAttempts,
             $this->authSchemePreference,
-            $this->plugins->add($plugin),
-            [self::PLUGINS => true] + $this->definedOverrides
+            $this->plugins->add($plugin)
         );
     }
 
@@ -182,8 +150,7 @@ final readonly class RequestOverrideConfig
             $this->transportOverrides,
             $this->maxAttempts,
             $this->authSchemePreference,
-            $this->plugins->merge(new PluginCollection(...$plugins)),
-            [self::PLUGINS => true] + $this->definedOverrides
+            $this->plugins->merge(new PluginCollection(...$plugins))
         );
     }
 

@@ -422,34 +422,22 @@ final class StdFunctions
 
             public function apply(array $args): mixed
             {
-                [$input, $start, $stop, $reverse] = [
-                    $args[0] ?? null,
-                    $args[1] ?? 0,
-                    $args[2] ?? 0,
-                    (bool) ($args[3] ?? false)
-                ];
+                $input = $args[0] ?? null;
+                $start = $args[1] ?? 0;
+                $stop = $args[2] ?? 0;
                 if (!\is_string($input)
                     || !\is_int($start)
                     || !\is_int($stop)
                 ) {
                     return null;
                 }
-                if ($start >= $stop) {
-                    return null;
-                }
-                $len = \strlen($input);
-                if ($len < $stop) {
-                    return null;
-                }
-                // ASCII-only guard: an octet > 127 aborts, which avoids
-                // multi-byte indexing ambiguity. `preg_match` performs
-                // the scan in C via PCRE.
-                if (\preg_match('/[\x80-\xff]/', $input) === 1) {
-                    return null;
-                }
-                return $reverse
-                    ? \substr($input, $len - $stop, $stop - $start)
-                    : \substr($input, $start, $stop - $start);
+
+                return Evaluator::substring(
+                    $input,
+                    $start,
+                    $stop,
+                    (bool) ($args[3] ?? false)
+                );
             }
         };
     }
@@ -524,81 +512,7 @@ final class StdFunctions
 
             public function apply1(mixed $a0): mixed
             {
-                if (!\is_string($a0)) {
-                    return null;
-                }
-                if (!\preg_match(
-                    '/^https?:\/\/[^\s\/?#]+(?:[\/?#]|$)/i',
-                    $a0
-                )) {
-                    return null;
-                }
-                // Spec: URLs containing a query MUST be rejected.
-                if (\str_contains($a0, '?')) {
-                    return null;
-                }
-                $parts = @\parse_url($a0);
-                if ($parts === false
-                    || empty($parts['scheme'])
-                    || empty($parts['host'])
-                ) {
-                    return null;
-                }
-                if (isset($parts['query'])
-                    || isset($parts['fragment'])
-                    || isset($parts['user'])
-                    || isset($parts['pass'])
-                ) {
-                    return null;
-                }
-
-                $scheme = \strtolower((string) $parts['scheme']);
-                if ($scheme !== 'http' && $scheme !== 'https') {
-                    return null;
-                }
-
-                $host   = (string) $parts['host'];
-                $port   = $parts['port'] ?? null;
-                $isIp = $this->isValidUrlHost($host);
-                if ($isIp === null) {
-                    return null;
-                }
-
-                // Reassemble the authority, preserving any explicit port.
-                $authority = $host;
-                if ($port !== null) {
-                    $authority .= ':' . $port;
-                }
-
-                $path = $parts['path'] ?? '';
-                if ($path === '') {
-                    $path = '/';
-                }
-
-                // Normalized path: guaranteed to start AND end with `/`.
-                $normalized = $path;
-                if ($normalized === '' || $normalized[0] !== '/') {
-                    $normalized = '/' . $normalized;
-                }
-                if (\substr($normalized, -1) !== '/') {
-                    $normalized .= '/';
-                }
-
-                // Preserve bracketed form in the authority for IPv6.
-                if (\filter_var($host, \FILTER_VALIDATE_IP, \FILTER_FLAG_IPV6)
-                    && $host[0] !== '['
-                ) {
-                    $authority = '[' . $host . ']'
-                        . ($port !== null ? ':' . $port : '');
-                }
-
-                return [
-                    'scheme'         => $scheme,
-                    'authority'      => $authority,
-                    'path'           => $path,
-                    'normalizedPath' => $normalized,
-                    'isIp'           => $isIp
-                ];
+                return \is_string($a0) ? Evaluator::parseUrl($a0) : null;
             }
 
             public function apply2(mixed $a0, mixed $a1): mixed
@@ -616,40 +530,6 @@ final class StdFunctions
                 return $this->apply1($args[0]);
             }
 
-            private function isValidUrlHost(string $host): ?bool
-            {
-                if ($host === '' || \preg_match('/[\x00-\x20\x7F]/', $host)) {
-                    return null;
-                }
-
-                if (\str_starts_with($host, '[')
-                    && \str_ends_with($host, ']')
-                ) {
-                    $ip = \substr($host, 1, -1);
-                    return \filter_var(
-                        $ip,
-                        \FILTER_VALIDATE_IP,
-                        \FILTER_FLAG_IPV6
-                    ) === false ? null : true;
-                }
-
-                if (\filter_var($host, \FILTER_VALIDATE_IP) !== false) {
-                    return true;
-                }
-
-                foreach (\explode('.', $host) as $part) {
-                    if ($part === ''
-                        || !\preg_match(
-                            '/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/',
-                            $part
-                        )
-                    ) {
-                        return null;
-                    }
-                }
-
-                return false;
-            }
         };
     }
 
@@ -683,27 +563,8 @@ final class StdFunctions
 
             public function apply2(mixed $a0, mixed $a1): mixed
             {
-                if (!\is_string($a0)) {
-                    return false;
-                }
-                if ($a1 === true) {
-                    foreach (\explode('.', $a0) as $label) {
-                        if (!self::isLabel($label)) {
-                            return false;
-                        }
-                    }
-                    return true;
-                }
-                return self::isLabel($a0);
-            }
-
-            private static function isLabel(string $label): bool
-            {
-                // 1..63 chars, alnum at each end, hyphen allowed inside.
-                return (bool) \preg_match(
-                    '/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/',
-                    $label
-                );
+                return \is_string($a0)
+                    && Evaluator::isValidHostLabel($a0, $a1 === true);
             }
 
             public function apply3(mixed $a0, mixed $a1, mixed $a2): mixed
@@ -805,24 +666,9 @@ final class StdFunctions
 
             public function apply3(mixed $a0, mixed $a1, mixed $a2): mixed
             {
-                if (!\is_string($a0)
-                    || !\is_string($a1)
-                    || !\is_int($a2)
-                    || $a1 === ''
-                    || $a2 < 0
-                ) {
-                    return null;
-                }
-                if ($a0 === '') {
-                    return [''];
-                }
-                if ($a2 === 1) {
-                    return [$a0];
-                }
-                // explode's `$limit` is exclusive (0 means "no limit" is
-                // *not* the same as our contract - PHP's 0 means single
-                // element). Feed PHP_INT_MAX for unlimited.
-                return \explode($a1, $a0, $a2 === 0 ? \PHP_INT_MAX : $a2);
+                return \is_string($a1) && \is_int($a2)
+                    ? Evaluator::split($a0, $a1, $a2)
+                    : null;
             }
 
             public function apply(array $args): mixed

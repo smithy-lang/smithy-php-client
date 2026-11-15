@@ -21,8 +21,8 @@ namespace Smithy\Client\Auth;
  */
 final class CachingIdentityResolver implements IdentityResolverInterface
 {
-    /** @var TIdentity|null */
-    private ?IdentityInterface $cached = null;
+    /** @var IdentityResult<TIdentity>|null */
+    private ?IdentityResult $cached = null;
 
     /** @var array<string, mixed>|null */
     private ?array $cachedProperties = null;
@@ -65,9 +65,9 @@ final class CachingIdentityResolver implements IdentityResolverInterface
         if ($this->cached !== null
             && $this->cachedProperties === $properties
             && !$this->refreshRequired
-            && !$this->requiresRefresh($this->cached)
+            && !$this->requiresRefresh($this->cached->identity)
         ) {
-            return IdentityResult::success($this->cached);
+            return $this->cached;
         }
 
         $result = $this->inner->resolveIdentity($properties);
@@ -80,7 +80,7 @@ final class CachingIdentityResolver implements IdentityResolverInterface
             return $result;
         }
 
-        $this->cached = $result->identity;
+        $this->cached = $result;
         $this->cachedProperties = $properties;
         $this->refreshRequired = false;
 
@@ -101,7 +101,10 @@ final class CachingIdentityResolver implements IdentityResolverInterface
     public function invalidate(IdentityInterface $rejectedIdentity): void
     {
         if ($this->cached !== null
-            && ($this->identityMatcher)($this->cached, $rejectedIdentity)
+            && ($this->identityMatcher)(
+                $this->cached->identity,
+                $rejectedIdentity
+            )
         ) {
             $this->refreshRequired = true;
         }

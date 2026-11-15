@@ -12,10 +12,9 @@ namespace Smithy\Client;
 use Smithy\Async\Async;
 use Smithy\Client\Auth\{
     IdentityInterface,
-    ResolvedAuthScheme,
-    SignerResult
+    IdentityResolverInterface,
+    ResolvedAuthScheme
 };
-use Smithy\Client\Endpoint\EndpointResolverParams;
 use Smithy\Client\Interceptor\InputContext;
 use Smithy\Client\Interceptor\InterceptorInterface;
 use Smithy\Client\Interceptor\OutputContext;
@@ -23,7 +22,6 @@ use Smithy\Client\Interceptor\RequestContext;
 use Smithy\Client\Interceptor\ResponseContext;
 use Smithy\Client\Retry\RetryRequestFlagResolverInterface;
 use Smithy\Client\Retry\TokenAcquisitionFailedException;
-use Smithy\Core\Endpoint\Endpoint;
 use Smithy\Core\Transport\{
     TransportContext,
     TransportRequestInterface,
@@ -62,6 +60,9 @@ use Smithy\Core\Shape\OperationInterface;
  */
 final class ClientPipeline
 {
+    /** @var array<string, ResolvedAuthScheme> Auth schemes by operation identity */
+    private array $authSchemeByOperation = [];
+
     public function __construct(
         private readonly ClientConfig $config
     ) {}
@@ -76,7 +77,7 @@ final class ClientPipeline
     ): SerializableStructInterface
     {
         $config = $this->config;
-        $interceptor = $config->interceptorChain;
+        $interceptor = $config->interceptorChain->forOperation($operation);
 
         if ($interceptor->isEmpty()) {
             $transportContext = new TransportContext(
@@ -142,18 +143,18 @@ final class ClientPipeline
             $attempt = 1;
             while (true) {
                 $reqCtx->replaceRequest($retryRequest);
-                $attemptResult = $this->executeAttempt(
+                $attemptError = $this->executeAttempt(
                     $interceptor,
                     $reqCtx,
                     $overrides,
-                    $transportContext
+                    $transportContext,
+                    $outCtx
                 );
-                $outCtx = $attemptResult->outputContext;
 
                 $error = $this->completeAttempt(
                     $interceptor,
                     $outCtx,
-                    $attemptResult->error
+                    $attemptError
                 );
 
                 if ($error !== null) {
@@ -289,45 +290,54 @@ final class ClientPipeline
         );
     }
 
-    private function resolveEndpoint(
-        OperationInterface $operation,
-        SerializableStructInterface $input,
-        ClientConfig $config
-    ): Endpoint
-    {
-        return $config->endpointResolver->resolveEndpoint(
-            new EndpointResolverParams($operation, $input, $config)
-        );
-    }
-
     /**
      * Resolve attempt-scoped auth and endpoint state.
+     *
+     * Return the request with the endpoint applied. Write the signing auth
+     * scheme, its identity resolver, and the resolved identity to the
+     * reference parameters.
      */
     private function prepareAttemptRequest(
         OperationInterface $operation,
         SerializableStructInterface $input,
         TransportRequestInterface $request,
         ClientConfig $config,
-        ?RequestOverrideConfig $overrides
-    ): PreparedAttempt
+        ?RequestOverrideConfig $overrides,
+        ?ResolvedAuthScheme &$authScheme,
+        ?IdentityResolverInterface &$identityResolver,
+        ?IdentityInterface &$identity
+    ): TransportRequestInterface
     {
-        $preference = $overrides?->authSchemePreference
-            ?? $config->authSchemePreference;
-        $resolvedAuthScheme = $config
-            ->authSchemeResolver
-            ->resolveAuthScheme(
-                $operation,
-                $config,
-                $preference
-            );
+        $preference = $overrides?->authSchemePreference;
+        if ($preference === null && $config === $this->config) {
+            // Resolution depends only on the operation and immutable config.
+            $preference = $config->authSchemePreference;
+            $cacheKey = $operation->getRuntimeIdentity();
+            $resolvedAuthScheme = $this->authSchemeByOperation[$cacheKey]
+                ??= $config->authSchemeResolver->resolveAuthScheme(
+                    $operation,
+                    $config,
+                    $preference
+                );
+        } else {
+            $preference ??= $config->authSchemePreference;
+            $resolvedAuthScheme = $config
+                ->authSchemeResolver
+                ->resolveAuthScheme($operation, $config, $preference);
+        }
+
         $identityResolver = $resolvedAuthScheme
             ->scheme
             ->getIdentityResolver($config);
         $identity = $identityResolver
             ->resolveIdentity($resolvedAuthScheme->identityProperties)
             ->unwrap();
-        $endpoint = $this->resolveEndpoint($operation, $input, $config);
-        $signingAuthScheme = $config
+        $endpoint = $config->endpointResolver->resolveEndpoint(
+            $operation,
+            $input,
+            $config
+        );
+        $authScheme = $config
             ->authSchemeResolver
             ->resolveEndpointAuthScheme(
                 $resolvedAuthScheme,
@@ -336,12 +346,14 @@ final class ClientPipeline
                 $endpoint->authSchemes,
                 $preference
             );
-        if ($signingAuthScheme->scheme !== $resolvedAuthScheme->scheme) {
-            $identityResolver = $signingAuthScheme
+        if ($authScheme->scheme !== $resolvedAuthScheme->scheme) {
+            // A failure below must not leave the modeled identity in place.
+            $identity = null;
+            $identityResolver = $authScheme
                 ->scheme
                 ->getIdentityResolver($config);
             $identity = $identityResolver
-                ->resolveIdentity($signingAuthScheme->identityProperties)
+                ->resolveIdentity($authScheme->identityProperties)
                 ->unwrap();
         }
 
@@ -349,69 +361,60 @@ final class ClientPipeline
             $request,
             $endpoint
         );
-        $request = $overrides?->applyToRequest($request) ?? $request;
 
-        return new PreparedAttempt(
-            $request,
-            $signingAuthScheme,
-            $identityResolver,
-            $identity
-        );
+        return $overrides?->applyToRequest($request) ?? $request;
     }
 
     /**
-     * Execute one signed HTTP attempt.
+     * Execute one signed HTTP attempt and return its error.
      *
-     * On success the result error is null and its output context contains the
-     * deserialized output. On failure the error is populated and the output
-     * context describes how far the attempt got.
+     * Write the attempt's output context to `$outCtx`. On success it contains
+     * the deserialized output. On failure it describes how far the attempt
+     * got.
      */
     private function executeAttempt(
         InterceptorInterface $interceptor,
         RequestContext $reqCtx,
         ?RequestOverrideConfig $overrides,
-        TransportContext $transportContext
-    ): AttemptResult
+        TransportContext $transportContext,
+        ?OutputContext &$outCtx
+    ): ?\Throwable
     {
+        $outCtx = null;
         $response = null;
         $output = null;
         $error = null;
         $request = $reqCtx->request;
+        $authScheme = null;
         $identity = null;
         $identityResolver = null;
 
         try {
             $interceptor->readBeforeAttempt($reqCtx);
         } catch (\Throwable $e) {
-            $error = $e;
-        }
-
-        if ($error !== null) {
-            return new AttemptResult(
-                new OutputContext(
-                    $reqCtx->operation,
-                    $reqCtx->input,
-                    $reqCtx->config,
-                    $request,
-                    null,
-                    null
-                ),
-                $error
+            $outCtx = new OutputContext(
+                $reqCtx->operation,
+                $reqCtx->input,
+                $reqCtx->config,
+                $request,
+                null,
+                null
             );
+
+            return $e;
         }
 
         try {
-            $config = $reqCtx->config;
-            $prepared = $this->prepareAttemptRequest(
+            $request = $this->prepareAttemptRequest(
                 $reqCtx->operation,
                 $reqCtx->input,
                 $request,
-                $config,
-                $overrides
+                $reqCtx->config,
+                $overrides,
+                $authScheme,
+                $identityResolver,
+                $identity
             );
-            $request = $prepared->request;
-            $identityResolver = $prepared->identityResolver;
-            $identity = $prepared->identity;
             $reqCtx->replaceRequest($request);
 
             $request = $interceptor->modifyBeforeSigning($reqCtx);
@@ -421,10 +424,10 @@ final class ClientPipeline
 
             $interceptor->readBeforeSigning($reqCtx);
 
-            $request = $this->signRequest(
-                $prepared->authScheme,
+            $request = $authScheme->scheme->getSigner()->sign(
                 $request,
-                $identity
+                $identity,
+                $authScheme->signerProperties
             )->signedRequest;
             $reqCtx->replaceRequest($request);
 
@@ -496,20 +499,18 @@ final class ClientPipeline
             $error = $e;
         }
 
-        if (!isset($outCtx)) {
-            $outCtx = new OutputContext(
-                $reqCtx->operation,
-                $reqCtx->input,
-                $reqCtx->config,
-                $request,
-                $response,
-                $output,
-                $identity,
-                $identityResolver
-            );
-        }
+        $outCtx ??= new OutputContext(
+            $reqCtx->operation,
+            $reqCtx->input,
+            $reqCtx->config,
+            $request,
+            $response,
+            $output,
+            $identity,
+            $identityResolver
+        );
 
-        return new AttemptResult($outCtx, $error);
+        return $error;
     }
 
     private function executeWithoutInterceptors(
@@ -528,28 +529,32 @@ final class ClientPipeline
             $requestFlags
         );
         $strategyMaxAttempts = $config->retryStrategy->maxAttempts();
+        $authScheme = null;
+        $identityResolver = null;
+        $identity = null;
 
         $attempt = 1;
         while (true) {
             $attemptRequest = $request;
             $response = null;
             try {
-                $prepared = $this->prepareAttemptRequest(
+                $attemptRequest = $this->prepareAttemptRequest(
                     $operation,
                     $input,
                     $request,
                     $config,
-                    $overrides
+                    $overrides,
+                    $authScheme,
+                    $identityResolver,
+                    $identity
                 );
-                $attemptRequest = $prepared->request;
-                $signedRequest = $this->signRequest(
-                    $prepared->authScheme,
+                $attemptRequest = $authScheme->scheme->getSigner()->sign(
                     $attemptRequest,
-                    $prepared->identity
+                    $identity,
+                    $authScheme->signerProperties
                 )->signedRequest;
-                $attemptRequest = $signedRequest;
                 $response = $config->transport->send(
-                    $signedRequest,
+                    $attemptRequest,
                     $transportContext
                 );
                 $output = $this->deserializeResponse(
@@ -603,42 +608,6 @@ final class ClientPipeline
             $operation,
             $response
         );
-    }
-
-    /**
-     * Sign one attempt and always release the attempt-scoped signer.
-     *
-     * A cleanup failure is surfaced after successful signing. If signing
-     * already failed, its error remains authoritative because PHP has no
-     * suppressed-exception mechanism.
-     */
-    private function signRequest(
-        ResolvedAuthScheme $authScheme,
-        TransportRequestInterface $request,
-        IdentityInterface $identity
-    ): SignerResult
-    {
-        $signer = $authScheme->scheme->getSigner();
-        $signingError = null;
-
-        try {
-            return $signer->sign(
-                $request,
-                $identity,
-                $authScheme->signerProperties
-            );
-        } catch (\Throwable $error) {
-            $signingError = $error;
-            throw $error;
-        } finally {
-            try {
-                $signer->close();
-            } catch (\Throwable $cleanupError) {
-                if ($signingError === null) {
-                    throw $cleanupError;
-                }
-            }
-        }
     }
 
     /**

@@ -47,6 +47,8 @@ final class DynamicOperation implements OperationInterface
      * Create runtime metadata for one modeled operation.
      *
      * @param array<string, string> $errorDiscriminatorTraits
+     * @param DocumentFactory|null $documentFactory Shared factory from the
+     *                                             owning client.
      */
     public function __construct(
         private readonly SmithyModel $model,
@@ -54,7 +56,8 @@ final class DynamicOperation implements OperationInterface
         private readonly string $serviceId,
         private readonly string $operationId,
         ?string $protocolId = null,
-        private readonly array $errorDiscriminatorTraits = []
+        private readonly array $errorDiscriminatorTraits = [],
+        ?DocumentFactory $documentFactory = null
     )
     {
         $operation = $model->expectShape($operationId);
@@ -107,7 +110,7 @@ final class DynamicOperation implements OperationInterface
         $this->outputStreamMember = self::findStreamingMember(
             $this->outputSchema
         );
-        $this->documentFactory = new DocumentFactory();
+        $this->documentFactory = $documentFactory ?? new DocumentFactory();
 
         foreach ($model->getServiceErrorIds($serviceId) as $errorId) {
             $this->registerError($errorId);

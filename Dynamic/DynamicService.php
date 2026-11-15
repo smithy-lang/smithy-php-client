@@ -39,13 +39,16 @@ final class DynamicService implements ServiceInterface
      * Create runtime metadata for a modeled service.
      *
      * @param array<string, string> $errorDiscriminatorTraits
+     * @param DocumentFactory|null $documentFactory Factory shared with the
+     *                                             created operations.
      */
     public function __construct(
         private readonly SmithyModel $model,
         SchemaConverter $converter,
         ?string $serviceId = null,
         private readonly ?string $protocolId = null,
-        private readonly array $errorDiscriminatorTraits = []
+        private readonly array $errorDiscriminatorTraits = [],
+        private readonly ?DocumentFactory $documentFactory = null
     )
     {
         $this->serviceId = $this->resolveServiceId($serviceId);
@@ -142,7 +145,8 @@ final class DynamicService implements ServiceInterface
             $this->serviceId,
             $operationId,
             $this->protocolId,
-            $this->errorDiscriminatorTraits
+            $this->errorDiscriminatorTraits,
+            $this->documentFactory
         );
     }
 

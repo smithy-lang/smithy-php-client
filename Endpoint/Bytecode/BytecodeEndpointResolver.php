@@ -10,8 +10,8 @@ declare(strict_types=1);
 namespace Smithy\Client\Endpoint\Bytecode;
 
 use JmesPath\Env;
+use Smithy\Client\ClientConfig;
 use Smithy\Client\Endpoint\EndpointResolverInterface;
-use Smithy\Client\Endpoint\EndpointResolverParams;
 use Smithy\Core\Endpoint\Endpoint;
 use Smithy\Core\Serde\{
     DynamicTraitValue,
@@ -91,7 +91,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
      *     Endpoint
      * }>
      */
-    protected static array $sharedCache = [];
+    private static array $sharedCache = [];
 
     /** @var (\Closure(array<string, mixed>): string)|null */
     private readonly ?\Closure $keyBuilder;
@@ -115,6 +115,13 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
      * }
      */
     private array|false $lastOperationContext = false;
+
+    private ?ClientConfig $lastConfig = null;
+
+    /** @var array<string, mixed> Endpoint parameters from the last config */
+    private array $lastConfigParameters = [];
+
+    private ?EndpointResolutionTraceSinkInterface $lastTraceSink = null;
 
     /**
      * Create an endpoint resolver.
@@ -194,9 +201,12 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
             . ':' . $configDigest;
     }
 
-    public function resolveEndpoint(EndpointResolverParams $params): Endpoint
+    public function resolveEndpoint(
+        OperationInterface $operation,
+        SerializableStructInterface $input,
+        ClientConfig $config
+    ): Endpoint
     {
-        $operation = $params->operation;
         if ($operation === $this->lastOperation) {
             $operationContext = $this->lastOperationContext;
         } else {
@@ -212,38 +222,20 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
         if ($operationContext !== false) {
             $this->collectOperationContext(
                 $operationContext,
-                $params->input,
+                $input,
                 $inputs
             );
         }
 
-        $context = $params->config->context[
-            EndpointResolverParams::CONTEXT_PARAMETERS
-        ] ?? [];
-        if (!\is_array($context)) {
-            throw new \InvalidArgumentException(
-                'Endpoint parameters must be an associative array.'
-            );
-        }
-        foreach ($context as $name => $value) {
-            if (\is_string($name)) {
-                $inputs[$name] = $value;
-            }
+        if ($config !== $this->lastConfig) {
+            $this->readConfigContext($config);
         }
 
-        $traceSink = $params->config->context[
-            EndpointResolverParams::CONTEXT_TRACE_SINK
-        ] ?? null;
-        if ($traceSink !== null
-            && !$traceSink instanceof EndpointResolutionTraceSinkInterface
-        ) {
-            throw new \InvalidArgumentException(
-                'Endpoint resolution trace sink must implement '
-                    . EndpointResolutionTraceSinkInterface::class
-                    . '.'
-            );
+        foreach ($this->lastConfigParameters as $name => $value) {
+            $inputs[$name] = $value;
         }
 
+        $traceSink = $this->lastTraceSink;
         $trace = $traceSink?->begin($this->bytecode, $inputs);
         if ($trace !== null) {
             return $this->evaluator->evaluateTraced($inputs, $trace);
@@ -281,7 +273,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
 
         if ($this->cacheMax > 0) {
             while (\count(self::$sharedCache) >= $this->cacheMax) {
-                \array_shift(self::$sharedCache);
+                unset(self::$sharedCache[\array_key_first(self::$sharedCache)]);
             }
             self::$sharedCache[$namespacedKey] = [
                 $this->bytecode,
@@ -296,6 +288,48 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
         $this->lastEndpoint = $endpoint;
 
         return $endpoint;
+    }
+
+    /**
+     * Validate and remember the endpoint context of a client config.
+     *
+     * @throws \InvalidArgumentException When the endpoint parameters or trace
+     *                                   sink are invalid.
+     */
+    private function readConfigContext(ClientConfig $config): void
+    {
+        $context = $config->context[
+            EndpointResolverInterface::CONTEXT_PARAMETERS
+        ] ?? [];
+        if (!\is_array($context)) {
+            throw new \InvalidArgumentException(
+                'Endpoint parameters must be an associative array.'
+            );
+        }
+
+        $parameters = [];
+        foreach ($context as $name => $value) {
+            if (\is_string($name)) {
+                $parameters[$name] = $value;
+            }
+        }
+
+        $traceSink = $config->context[
+            EndpointResolverInterface::CONTEXT_TRACE_SINK
+        ] ?? null;
+        if ($traceSink !== null
+            && !$traceSink instanceof EndpointResolutionTraceSinkInterface
+        ) {
+            throw new \InvalidArgumentException(
+                'Endpoint resolution trace sink must implement '
+                    . EndpointResolutionTraceSinkInterface::class
+                    . '.'
+            );
+        }
+
+        $this->lastConfig = $config;
+        $this->lastConfigParameters = $parameters;
+        $this->lastTraceSink = $traceSink;
     }
 
     /**

@@ -21,6 +21,10 @@ interface AuthSchemeResolverInterface
     /**
      * Resolve an auth scheme for an operation.
      *
+     * The pipeline caches the result per operation when the request sets no
+     * auth scheme preference override, so the result must depend only on the
+     * arguments.
+     *
      * @param list<string> $preference Auth scheme names in preferred order.
      *
      * @throws \RuntimeException If no scheme can be resolved.

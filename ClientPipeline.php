@@ -164,6 +164,19 @@ final class ClientPipeline
                         break;
                     }
 
+                    // Confirm the request can be replayed before spending
+                    // retry tokens; otherwise a non-replayable body would
+                    // permanently deplete the bucket for a retry that never
+                    // happens.
+                    if (!$config->transport->prepareRequestForRetry(
+                        $outCtx->request ?? $retryRequest,
+                        $outCtx->response,
+                        $transportContext,
+                        $error
+                    )) {
+                        break;
+                    }
+
                     try {
                         $delay = $config->retryStrategy->refresh(
                             $retryState,
@@ -174,15 +187,6 @@ final class ClientPipeline
                         break;
                     }
                     if ($attempt >= $strategyMaxAttempts) {
-                        break;
-                    }
-
-                    if (!$config->transport->prepareRequestForRetry(
-                        $outCtx->request ?? $retryRequest,
-                        $outCtx->response,
-                        $transportContext,
-                        $error
-                    )) {
                         break;
                     }
 
@@ -567,20 +571,24 @@ final class ClientPipeline
                 ) {
                     throw $error;
                 }
+                // Confirm the request can be replayed before spending
+                // retry tokens; otherwise a non-replayable body would
+                // permanently deplete the bucket for a retry that never
+                // happens.
+                if (!$config->transport->prepareRequestForRetry(
+                    $attemptRequest,
+                    $response,
+                    $transportContext,
+                    $error
+                )) {
+                    throw $error;
+                }
                 try {
                     $delay = $config->retryStrategy->refresh(
                         $retryState,
                         $error
                     );
                     if ($attempt >= $strategyMaxAttempts) {
-                        throw $error;
-                    }
-                    if (!$config->transport->prepareRequestForRetry(
-                        $attemptRequest,
-                        $response,
-                        $transportContext,
-                        $error
-                    )) {
                         throw $error;
                     }
                     Async::delay($delay);

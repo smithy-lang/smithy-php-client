@@ -12,9 +12,10 @@ namespace Smithy\Client\Retry;
 /**
  * Single-attempt strategy. Never retries.
  *
- * Serves as the default when no strategy is configured. Every call to
- * {@see refresh()} throws {@see TokenAcquisitionFailedException}
- * because this strategy cannot grant another attempt.
+ * The explicit opt-out of retrying; {@see StandardRetryStrategy} is the
+ * default when no strategy is configured. Every call to {@see refresh()}
+ * throws {@see TokenAcquisitionFailedException} because this strategy
+ * cannot grant another attempt.
  */
 final class NoRetryStrategy implements RetryStrategyInterface
 {

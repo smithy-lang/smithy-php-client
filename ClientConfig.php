@@ -29,6 +29,7 @@ use Smithy\Client\Protocol\{
 };
 use Smithy\Client\Retry\NoRetryStrategy;
 use Smithy\Client\Retry\RetryStrategyInterface;
+use Smithy\Client\Retry\StandardRetryStrategy;
 use Smithy\Core\Transport\TransportInterface;
 use Smithy\Core\Shape\ServiceInterface;
 use Smithy\Protocol\ProtocolInterface;
@@ -90,8 +91,10 @@ class ClientConfig
      *                                         Selects a scheme per operation.
      * @param list<string> $authSchemePreference Auth scheme names in
      *        customer-preferred order.
-     * @param RetryStrategyInterface|null $retryStrategy Defaults to
-     *                                    {@see NoRetryStrategy}.
+     * @param RetryStrategyInterface|null $retryStrategy Defaults to a new
+     *                                    {@see StandardRetryStrategy}; pass
+     *                                    {@see NoRetryStrategy::instance()}
+     *                                    to disable retries.
      * @param string $retryScope Retry scope identifier shared across
      *               executions.
      * @param array<string, mixed> $context Extension bag for
@@ -172,7 +175,7 @@ class ClientConfig
 
         $this->authSchemeResolver = $authSchemeResolver
             ?? new AuthSchemeResolver();
-        $this->retryStrategy = $retryStrategy ?? NoRetryStrategy::instance();
+        $this->retryStrategy = $retryStrategy ?? new StandardRetryStrategy();
         $this->retryScope = $retryScope;
         $this->context = $context;
         $this->pluginState = $pluginState ?? PluginState::defaults();

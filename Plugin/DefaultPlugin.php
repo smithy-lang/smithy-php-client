@@ -39,6 +39,7 @@ final class DefaultPlugin extends AbstractPlugin
     {
         return [
             IdempotencyTokenPlugin::instance(),
+            RetrySafetyPlugin::instance(),
             AutoPlugin::instance()
         ];
     }

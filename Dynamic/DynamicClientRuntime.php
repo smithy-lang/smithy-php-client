@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Dynamic;
 
-use Smithy\Client\Auth\AuthSchemeInterface;
+use Smithy\Auth\AuthSchemeInterface;
 use Smithy\Client\Endpoint\Bytecode\RulesFunctionInterface;
 use Smithy\Client\Protocol\ProtocolResolver;
 use Smithy\Core\Serde\SchemaTraitRegistry;

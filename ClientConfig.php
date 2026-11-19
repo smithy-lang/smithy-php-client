@@ -9,13 +9,13 @@ declare(strict_types=1);
 
 namespace Smithy\Client;
 
-use Smithy\Client\Auth\AuthSchemeInterface;
+use Smithy\Auth\AuthSchemeInterface;
+use Smithy\Auth\IdentityResolverInterface;
+use Smithy\Auth\IdentityResolvers;
+use Smithy\Auth\IdentityResolversInterface;
+use Smithy\Auth\NoAuthScheme;
 use Smithy\Client\Auth\AuthSchemeResolver;
 use Smithy\Client\Auth\AuthSchemeResolverInterface;
-use Smithy\Client\Auth\IdentityResolverInterface;
-use Smithy\Client\Auth\IdentityResolvers;
-use Smithy\Client\Auth\IdentityResolversInterface;
-use Smithy\Client\Auth\NoAuthScheme;
 use Smithy\Client\Endpoint\EndpointResolverInterface;
 use Smithy\Client\Interceptor\InterceptorChain;
 use Smithy\Client\Interceptor\InterceptorInterface;
@@ -566,7 +566,7 @@ class ClientConfig
      * Adds to the current {@see IdentityResolvers}, replacing any resolver
      * already registered for the same identity type.
      *
-     * @param class-string<\Smithy\Client\Auth\IdentityInterface> $identityClass
+     * @param class-string<\Smithy\Auth\IdentityInterface> $identityClass
      */
     public function withIdentityResolver(
         string $identityClass,

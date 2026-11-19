@@ -9,15 +9,13 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Dynamic;
 
+use Smithy\Auth\AuthSchemeInterface;
 use Smithy\Client\{
     AbstractClient,
     ClientConfig,
     RequestOverrideConfig
 };
-use Smithy\Client\Auth\{
-    AuthSchemeInterface,
-    AuthSchemeResolverInterface
-};
+use Smithy\Client\Auth\AuthSchemeResolverInterface;
 use Smithy\Client\Endpoint\{
     Bytecode\RulesFunctionInterface,
     Bytecode\StdFunctions,

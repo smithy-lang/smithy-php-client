@@ -9,6 +9,11 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Auth;
 
+use Smithy\Auth\{
+    AuthSchemeInterface,
+    AuthSchemeOption,
+    ResolvedAuthScheme
+};
 use Smithy\Client\ClientConfig;
 use Smithy\Core\Endpoint\EndpointAuthScheme;
 use Smithy\Core\Shape\OperationInterface;

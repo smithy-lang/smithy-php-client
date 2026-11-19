@@ -55,7 +55,7 @@ with one dependency replaced.
 
 | Namespace | Responsibility |
 |---|---|
-| `Smithy\Client\Auth` | Authentication selection, identities, and signers |
+| `Smithy\Client\Auth` | Authentication scheme selection; schemes, identities, and signers are in `smithy/auth` |
 | `Smithy\Client\Endpoint` | Static and bytecode endpoint resolvers; the resolved `Endpoint` value lives in `Smithy\Core\Endpoint` |
 | [`Smithy\Client\Interceptor`](Interceptor/README.md) | Request pipeline hooks and contexts |
 | `Smithy\Client\Pagination` | Schema-driven paginators |
@@ -128,8 +128,8 @@ functions, and schema traits through an internal `DynamicClientRuntime`.
 
 ## Dependencies
 
-This package builds on `smithy/async`, `smithy/core`, `smithy/http`,
-`smithy/protocol`, and `psr/http-message`. Waiter path expressions use
+This package builds on `smithy/async`, `smithy/auth`, `smithy/core`,
+`smithy/http`, `smithy/protocol`, and `psr/http-message`. Waiter path expressions use
 `mtdowling/jmespath.php`.
 
 ## Design

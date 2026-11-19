@@ -10,6 +10,7 @@
         "php": ">=8.2",
         "psr/http-message": "^2.0",
         "smithy/async": "self.version",
+        "smithy/auth": "self.version",
         "smithy/core": "self.version",
         "smithy/http": "self.version",
         "smithy/protocol": "self.version"

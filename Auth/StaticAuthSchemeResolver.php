@@ -9,6 +9,10 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Auth;
 
+use Smithy\Auth\{
+    AuthSchemeOption,
+    NoAuthScheme
+};
 use Smithy\Client\ClientConfig;
 use Smithy\Core\Shape\OperationInterface;
 

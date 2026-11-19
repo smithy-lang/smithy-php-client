@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Interceptor;
 
-use Smithy\Client\Auth\{
+use Smithy\Auth\{
     IdentityInterface,
     IdentityResolverInterface
 };

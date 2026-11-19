@@ -10,7 +10,7 @@ declare(strict_types=1);
 namespace Smithy\Client;
 
 use Smithy\Async\Async;
-use Smithy\Client\Auth\{
+use Smithy\Auth\{
     IdentityInterface,
     IdentityNotFoundException,
     IdentityResolverInterface,

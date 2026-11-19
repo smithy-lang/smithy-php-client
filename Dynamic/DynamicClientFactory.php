@@ -9,10 +9,8 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Dynamic;
 
-use Smithy\Client\Auth\{
-    AuthSchemeInterface,
-    AuthSchemeResolverInterface
-};
+use Smithy\Auth\AuthSchemeInterface;
+use Smithy\Client\Auth\AuthSchemeResolverInterface;
 use Smithy\Client\Endpoint\{
     Bytecode\BytecodeEndpointResolver,
     Bytecode\Compiler\BddCompiler,

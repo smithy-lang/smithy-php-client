@@ -12,6 +12,7 @@ namespace Smithy\Client;
 use Smithy\Async\Async;
 use Smithy\Client\Auth\{
     IdentityInterface,
+    IdentityNotFoundException,
     IdentityResolverInterface,
     ResolvedAuthScheme
 };
@@ -330,9 +331,17 @@ final class ClientPipeline
                 ->resolveAuthScheme($operation, $config, $preference);
         }
 
-        $identityResolver = $resolvedAuthScheme
-            ->scheme
-            ->getIdentityResolver($config);
+        $identityResolver = $resolvedAuthScheme->identityResolver
+            ?? $resolvedAuthScheme
+                ->scheme
+                ->getIdentityResolver($config->getIdentityResolvers());
+        if ($identityResolver === null) {
+            throw new IdentityNotFoundException(
+                'Auth scheme '
+                . $resolvedAuthScheme->scheme->getSchemeId()
+                . ' has no usable identity resolver.'
+            );
+        }
         $identity = $identityResolver
             ->resolveIdentity($resolvedAuthScheme->identityProperties)
             ->unwrap();
@@ -353,9 +362,17 @@ final class ClientPipeline
         if ($authScheme->scheme !== $resolvedAuthScheme->scheme) {
             // A failure below must not leave the modeled identity in place.
             $identity = null;
-            $identityResolver = $authScheme
-                ->scheme
-                ->getIdentityResolver($config);
+            $identityResolver = $authScheme->identityResolver
+                ?? $authScheme
+                    ->scheme
+                    ->getIdentityResolver($config->getIdentityResolvers());
+            if ($identityResolver === null) {
+                throw new IdentityNotFoundException(
+                    'Auth scheme '
+                    . $authScheme->scheme->getSchemeId()
+                    . ' has no usable identity resolver.'
+                );
+            }
             $identity = $identityResolver
                 ->resolveIdentity($authScheme->identityProperties)
                 ->unwrap();

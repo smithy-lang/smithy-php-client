@@ -185,6 +185,7 @@ final class StandardRetryStrategy implements RetryStrategyInterface
         // Release at least one token so the bucket can refill.
         $bucket = $this->bucket($state->scope);
         $bucket->release(\max($state->lastRetryCost, 1));
+        $state->lastRetryCost = 0;
         $state->capacityRemaining = $bucket->capacity();
     }
 

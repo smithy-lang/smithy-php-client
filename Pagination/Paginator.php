@@ -32,6 +32,7 @@ final class Paginator implements \IteratorAggregate
     private readonly PaginationInput $input;
     private ?int $maxItems = null;
     private ?RequestOverrideConfig $requestOverrides = null;
+    private bool $stopOnSameToken = true;
 
     /**
      * Bind an operation and its original input to a client.
@@ -124,6 +125,22 @@ final class Paginator implements \IteratorAggregate
     }
 
     /**
+     * Create a copy that sets whether iteration ends when a response
+     * returns the same token as the previous request.
+     *
+     * When true, iteration ends after a page whose token equals the token
+     * sent with its request. When false, iteration continues until the
+     * token is empty or the max items limit is reached. Defaults to true.
+     */
+    public function withStopOnSameToken(bool $stop): self
+    {
+        $copy = clone $this;
+        $copy->stopOnSameToken = $stop;
+
+        return $copy;
+    }
+
+    /**
      * Iterate lazily over response pages.
      *
      * @return \Traversable<int, TOutput>
@@ -167,7 +184,8 @@ final class Paginator implements \IteratorAggregate
             $token = $this->extractToken($output);
             if (self::isEmptyToken($token)
                 || (
-                    $hasPreviousToken
+                    $this->stopOnSameToken
+                    && $hasPreviousToken
                     && self::tokensEqual($token, $previousToken)
                 )
             ) {

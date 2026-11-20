@@ -102,6 +102,16 @@ foreach ($pages as $page) {
 }
 ```
 
+Pagination stops when a response returns the same token that was sent with
+its request. Some services repeat tokens by design, such as tailing log
+streams. Call `withStopOnSameToken(false)` to keep paginating until the token
+is empty or the max items limit is reached:
+
+```php
+$pages = $client->paginate('ListForecasts', ['city' => 'Raleigh'])
+    ->withStopOnSameToken(false);
+```
+
 Modeled waiters are available by their Smithy waiter name. The result retains
 the output or modeled error that satisfied the success acceptor:
 

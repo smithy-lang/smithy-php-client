@@ -49,7 +49,12 @@ class AuthSchemeResolver implements AuthSchemeResolverInterface
             if ($scheme === null) {
                 continue;
             }
-            $resolved = self::resolveOption($scheme, $option, $config);
+            $resolved = self::resolveOption(
+                $scheme,
+                $option,
+                $config,
+                $operation
+            );
             // A usable identity resolver makes the option selectable; when
             // the scheme yields one, return it. A skipped option lets a later
             // option (no-auth, or another configured scheme) win, matching
@@ -116,7 +121,12 @@ class AuthSchemeResolver implements AuthSchemeResolverInterface
                 );
             }
 
-            $resolved = self::resolveOption($scheme, $option, $config);
+            $resolved = self::resolveOption(
+                $scheme,
+                $option,
+                $config,
+                $operation
+            );
             if ($resolved !== null) {
                 return $resolved;
             }
@@ -199,7 +209,8 @@ class AuthSchemeResolver implements AuthSchemeResolverInterface
     private static function resolveOption(
         AuthSchemeInterface $scheme,
         AuthSchemeOption $option,
-        ClientConfig $config
+        ClientConfig $config,
+        OperationInterface $operation
     ): ?ResolvedAuthScheme
     {
         $identityResolver = $scheme->getIdentityResolver(
@@ -216,7 +227,10 @@ class AuthSchemeResolver implements AuthSchemeResolverInterface
                 ...$option->identityPropertyOverrides
             ],
             [
-                ...$scheme->getSignerProperties($config->context),
+                ...$scheme->getSignerProperties(
+                    $config->context,
+                    $operation
+                ),
                 ...$option->signerPropertyOverrides
             ],
             $identityResolver

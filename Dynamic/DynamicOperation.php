@@ -31,8 +31,10 @@ final class DynamicOperation implements OperationInterface
     private readonly Schema $outputSchema;
     private readonly string $name;
     private readonly string $runtimeIdentity;
-    /** @var list<string> */
-    private readonly array $effectiveAuthSchemes;
+    /** @var list<string>|null */
+    private ?array $effectiveAuthSchemes = null;
+    /** @var list<string> Auth scheme IDs the cached schemes were built from. */
+    private array $effectiveAuthSchemeIds = [];
     private readonly ?Schema $inputStreamMember;
     private readonly ?Schema $outputStreamMember;
     private readonly DocumentFactory $documentFactory;
@@ -49,6 +51,10 @@ final class DynamicOperation implements OperationInterface
      * @param array<string, string> $errorDiscriminatorTraits
      * @param DocumentFactory|null $documentFactory Shared factory from the
      *                                             owning client.
+     * @param (\Closure(): list<string>)|null $authSchemeIds Returns the auth
+     *     scheme trait IDs registered with the owning client. The operation
+     *     calls it on each effective auth lookup and rebuilds its cached
+     *     schemes when the IDs change.
      */
     public function __construct(
         private readonly SmithyModel $model,
@@ -57,7 +63,8 @@ final class DynamicOperation implements OperationInterface
         private readonly string $operationId,
         ?string $protocolId = null,
         private readonly array $errorDiscriminatorTraits = [],
-        ?DocumentFactory $documentFactory = null
+        ?DocumentFactory $documentFactory = null,
+        private readonly ?\Closure $authSchemeIds = null
     )
     {
         $operation = $model->expectShape($operationId);
@@ -99,11 +106,6 @@ final class DynamicOperation implements OperationInterface
             . ':' . $operationId
             . ':' . ($protocolId ?? '')
             . ':' . (++$nextRuntimeIdentity);
-        $this->effectiveAuthSchemes =
-            $model->getEffectiveAuthSchemeIds(
-                $serviceId,
-                $operationId
-            );
         $this->inputStreamMember = self::findStreamingMember(
             $this->inputSchema
         );
@@ -167,6 +169,21 @@ final class DynamicOperation implements OperationInterface
      */
     public function getEffectiveAuthSchemes(): array
     {
+        $authSchemeIds = $this->authSchemeIds === null
+            ? []
+            : ($this->authSchemeIds)();
+        if ($this->effectiveAuthSchemes === null
+            || $authSchemeIds !== $this->effectiveAuthSchemeIds
+        ) {
+            $this->effectiveAuthSchemeIds = $authSchemeIds;
+            $this->effectiveAuthSchemes =
+                $this->model->getEffectiveAuthSchemeIds(
+                    $this->serviceId,
+                    $this->operationId,
+                    $authSchemeIds
+                );
+        }
+
         return $this->effectiveAuthSchemes;
     }
 

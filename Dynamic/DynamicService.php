@@ -41,6 +41,9 @@ final class DynamicService implements ServiceInterface
      * @param array<string, string> $errorDiscriminatorTraits
      * @param DocumentFactory|null $documentFactory Factory shared with the
      *                                             created operations.
+     * @param (\Closure(): list<string>)|null $authSchemeIds Returns the auth
+     *     scheme trait IDs registered with the owning client; each created
+     *     operation calls it on each effective auth lookup.
      */
     public function __construct(
         private readonly SmithyModel $model,
@@ -48,7 +51,8 @@ final class DynamicService implements ServiceInterface
         ?string $serviceId = null,
         private readonly ?string $protocolId = null,
         private readonly array $errorDiscriminatorTraits = [],
-        private readonly ?DocumentFactory $documentFactory = null
+        private readonly ?DocumentFactory $documentFactory = null,
+        private readonly ?\Closure $authSchemeIds = null
     )
     {
         $this->serviceId = $this->resolveServiceId($serviceId);
@@ -146,7 +150,8 @@ final class DynamicService implements ServiceInterface
             $operationId,
             $this->protocolId,
             $this->errorDiscriminatorTraits,
-            $this->documentFactory
+            $this->documentFactory,
+            $this->authSchemeIds
         );
     }
 

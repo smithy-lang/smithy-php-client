@@ -60,6 +60,10 @@ class DynamicClient extends AbstractClient
      * Create a dynamic client with explicit runtime dependencies.
      *
      * @param array<string, string> $errorDiscriminatorTraits
+     * @param list<string> $authSchemeIds Auth scheme trait IDs counted as
+     *     service auth schemes when the model applies no auth trait. The
+     *     client adds the IDs of the auth schemes in its plugin-resolved
+     *     configuration.
      */
     public function __construct(
         SmithyModel $model,
@@ -68,7 +72,8 @@ class DynamicClient extends AbstractClient
         ?string $protocolId = null,
         PluginCollection $plugins = new PluginCollection(),
         ?SchemaTraitRegistry $traitRegistry = null,
-        array $errorDiscriminatorTraits = []
+        array $errorDiscriminatorTraits = [],
+        array $authSchemeIds = []
     )
     {
         $this->documentFactory = new DocumentFactory();
@@ -83,13 +88,40 @@ class DynamicClient extends AbstractClient
             $serviceId,
             $protocolId,
             $errorDiscriminatorTraits,
-            $this->documentFactory
+            $this->documentFactory,
+            fn(): array => $this->resolveAuthSchemeIds(
+                $config,
+                $authSchemeIds
+            )
         );
 
         parent::__construct(
             $config->withService($this->service),
             $plugins
         );
+    }
+
+    /**
+     * Return the given auth scheme IDs plus those of the client config.
+     *
+     * Reads the plugin-resolved config once construction finishes and the
+     * constructor's config while plugins are still being applied.
+     *
+     * @param list<string> $authSchemeIds
+     *
+     * @return list<string>
+     */
+    private function resolveAuthSchemeIds(
+        ClientConfig $constructorConfig,
+        array $authSchemeIds
+    ): array
+    {
+        $config = $this->config ?? $constructorConfig;
+        foreach ($config->supportedAuthSchemes as $scheme) {
+            $authSchemeIds[] = $scheme->getSchemeId();
+        }
+
+        return $authSchemeIds;
     }
 
     /**

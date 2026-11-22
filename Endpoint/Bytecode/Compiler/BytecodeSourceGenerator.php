@@ -31,6 +31,13 @@ use Smithy\Client\Endpoint\Bytecode\RulesFunctionInterface;
  */
 final class BytecodeSourceGenerator
 {
+    /** License header that every generated PHP file starts with. */
+    public const LICENSE_HEADER = "/*\n"
+        . " * Copyright Amazon.com, Inc. or its affiliates."
+        . " All Rights Reserved.\n"
+        . " * SPDX-License-Identifier: Apache-2.0\n"
+        . ' */';
+
     /**
      * Generate a process-cached bytecode class.
      *
@@ -50,6 +57,8 @@ final class BytecodeSourceGenerator
     {
         $lines = [];
         $lines[] = '<?php';
+        $lines[] = '';
+        $lines[] = self::LICENSE_HEADER;
         $lines[] = '';
         $lines[] = 'declare(strict_types=1);';
         $lines[] = '';

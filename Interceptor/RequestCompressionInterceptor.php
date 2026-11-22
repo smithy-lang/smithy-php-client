@@ -121,7 +121,8 @@ final class RequestCompressionInterceptor extends AbstractInterceptor
      */
     private static function compressBody(
         StreamInterface $body
-    ): ResourceRequestStream {
+    ): ResourceRequestStream
+    {
         $output = null;
         $position = null;
 
@@ -212,7 +213,8 @@ final class RequestCompressionInterceptor extends AbstractInterceptor
         RequestInterface $request,
         StreamInterface $body,
         array $encodingValues
-    ): RequestInterface {
+    ): RequestInterface
+    {
         $updated = $request->withBody($body);
 
         if ($updated->hasHeader('Transfer-Encoding')) {

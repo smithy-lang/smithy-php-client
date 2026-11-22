@@ -98,8 +98,7 @@ final class StandardRetryStrategy implements RetryStrategyInterface
                 . 'initialRetryTokens must not be negative.'
             );
         }
-        if (
-            $baseDelay < 0 || $throttlingBaseDelay < 0 || $maxBackoff < 0
+        if ($baseDelay < 0 || $throttlingBaseDelay < 0 || $maxBackoff < 0
             || $retryCost < 0 || $throttlingRetryCost < 0
         ) {
             throw new InvalidArgumentException(
@@ -231,8 +230,7 @@ final class StandardRetryStrategy implements RetryStrategyInterface
         }
 
         for ($e = $error; $e !== null; $e = $e->getPrevious()) {
-            if (
-                $e instanceof NetworkException
+            if ($e instanceof NetworkException
                 || ($e instanceof ApiException && $e->isServerFault())
             ) {
                 return [true, false, null];

@@ -111,7 +111,8 @@ final class HttpChecksumInterceptor extends AbstractInterceptor
      */
     private static function bufferBody(
         RequestStreamInterface $body
-    ): ResourceRequestStream {
+    ): ResourceRequestStream
+    {
         $output = null;
 
         try {

@@ -364,8 +364,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
     ): array|false
     {
         $members = [];
-        foreach (
-            $operation->getInputSchema()->getMembersByIndex()
+        foreach ($operation->getInputSchema()->getMembersByIndex()
                 as $member
         ) {
             $trait = $member->getDirectTraitById(self::CONTEXT_PARAM_TRAIT);

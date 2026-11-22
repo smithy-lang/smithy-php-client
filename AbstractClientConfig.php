@@ -238,7 +238,8 @@ abstract class AbstractClientConfig
      */
     public function withPluginCollection(
         PluginCollection $plugins
-    ): static {
+    ): static
+    {
         if ($plugins->isEmpty()) {
             return $this;
         }
@@ -721,7 +722,8 @@ abstract class AbstractClientConfig
 
     private function resolveWithPluginPredicate(
         \Closure $predicate
-    ): static {
+    ): static
+    {
         $state = $this->pluginState->withPredicate($predicate);
 
         return $this->withResolvedPluginState($state);

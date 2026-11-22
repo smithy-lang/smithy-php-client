@@ -15,14 +15,12 @@ use Smithy\Client\Endpoint\{
     Bytecode\BytecodeEndpointResolver,
     Bytecode\Compiler\BddCompiler,
     Bytecode\RulesFunctionInterface,
-    EndpointResolverInterface,
-    StaticEndpointResolver
+    EndpointResolverInterface
 };
 use Smithy\Client\Interceptor\InterceptorChain;
 use Smithy\Client\Plugin\PluginCollection;
 use Smithy\Client\Protocol\ProtocolResolver;
 use Smithy\Client\Retry\RetryStrategyInterface;
-use Smithy\Core\Endpoint\Endpoint;
 use Smithy\Core\Transport\TransportInterface;
 use Smithy\Core\Model\SmithyModel;
 use Smithy\Http\Client\HttpClientInterface;
@@ -116,12 +114,6 @@ final class DynamicClientFactory
                 . "configured protocol {$protocolId}."
             );
         }
-        if ($endpointResolver !== null && $endpoint !== null) {
-            throw new \InvalidArgumentException(
-                'Provide either an endpoint resolver or a static endpoint, '
-                . 'not both.'
-            );
-        }
         if ($endpointResolver === null) {
             $endpointBdd = $serviceTraits[self::ENDPOINT_BDD] ?? null;
             if ($endpointBdd !== null && !\is_array($endpointBdd)) {
@@ -146,16 +138,8 @@ final class DynamicClientFactory
                     ),
                     endpointAuthSchemeIds: $endpointAuthSchemeIds
                 );
-            } elseif ($endpoint !== null && $endpoint !== '') {
-                $endpointResolver = new StaticEndpointResolver(
-                    new Endpoint($endpoint)
-                );
-            } else {
-                throw new \InvalidArgumentException(
-                    'A dynamic client requires an endpoint resolver or '
-                    . 'static endpoint when the service has no modeled '
-                    . 'endpoint BDD.'
-                );
+                // The modeled rules consume the URL as their input.
+                $endpoint = null;
             }
         }
 
@@ -178,7 +162,8 @@ final class DynamicClientFactory
             authSchemePreference: $authSchemePreference,
             retryStrategy: $retryStrategy,
             retryScope: $retryScope,
-            context: $context
+            context: $context,
+            endpoint: $endpoint
         );
 
         return new $clientClass(

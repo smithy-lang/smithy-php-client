@@ -198,6 +198,8 @@ class DynamicClient extends AbstractClient
      * @param list<AuthSchemeInterface> $supportedAuthSchemes
      * @param list<string>|null $authSchemePreference
      * @param array<string, mixed> $context
+     * @param string|null $endpoint Endpoint URL the config wraps in a
+     *        static resolver. Set this or `$endpointResolver`.
      *
      * @internal Called by {@see DynamicClientFactory}.
      */
@@ -209,14 +211,15 @@ class DynamicClient extends AbstractClient
         ProtocolResolverInterface $protocolResolver,
         ?HttpClientInterface $httpClient,
         ?TransportInterface $transport,
-        EndpointResolverInterface $endpointResolver,
+        ?EndpointResolverInterface $endpointResolver,
         InterceptorChain $interceptors,
         array $supportedAuthSchemes,
         ?AuthSchemeResolverInterface $authSchemeResolver,
         ?array $authSchemePreference,
         ?RetryStrategyInterface $retryStrategy,
         string $retryScope,
-        array $context
+        array $context,
+        ?string $endpoint = null
     ): AbstractClientConfig
     {
         if ($transport !== null && $httpClient !== null) {
@@ -240,7 +243,8 @@ class DynamicClient extends AbstractClient
             authSchemePreference: $authSchemePreference ?? [],
             retryStrategy: $retryStrategy,
             retryScope: $retryScope,
-            context: $context
+            context: $context,
+            endpoint: $endpoint
         );
     }
 

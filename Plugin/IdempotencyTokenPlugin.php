@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Plugin;
 
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Client\Interceptor\IdempotencyTokenInterceptor;
 
 /**
@@ -36,7 +36,7 @@ final class IdempotencyTokenPlugin extends AbstractPlugin
      *
      * @throws \InvalidArgumentException If the configured provider is invalid.
      */
-    public function configure(ClientConfig $config): ClientConfig
+    public function configure(AbstractClientConfig $config): AbstractClientConfig
     {
         if ($config->interceptorChain->contains(
             IdempotencyTokenInterceptor::class
@@ -51,7 +51,7 @@ final class IdempotencyTokenPlugin extends AbstractPlugin
         );
     }
 
-    private function resolveTokenProvider(ClientConfig $config): ?\Closure
+    private function resolveTokenProvider(AbstractClientConfig $config): ?\Closure
     {
         $provider = $config->context[self::CONFIG_IDEMPOTENCY_TOKEN_PROVIDER]
             ?? null;

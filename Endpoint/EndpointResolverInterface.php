@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Endpoint;
 
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Core\Endpoint\Endpoint;
 use Smithy\Core\Serde\SerializableStructInterface;
 use Smithy\Core\Shape\OperationInterface;
@@ -26,12 +26,12 @@ use Smithy\Core\Shape\OperationInterface;
 interface EndpointResolverInterface
 {
     /**
-     * ClientConfig::context key containing endpoint parameter values.
+     * AbstractClientConfig::context key containing endpoint parameter values.
      */
     public const CONTEXT_PARAMETERS = 'smithy.endpointParameters';
 
     /**
-     * ClientConfig::context key containing an endpoint resolution trace sink.
+     * AbstractClientConfig::context key containing an endpoint resolution trace sink.
      */
     public const CONTEXT_TRACE_SINK = 'smithy.endpointResolutionTraceSink';
 
@@ -45,6 +45,6 @@ interface EndpointResolverInterface
     public function resolveEndpoint(
         OperationInterface $operation,
         SerializableStructInterface $input,
-        ClientConfig $config
+        AbstractClientConfig $config
     ): Endpoint;
 }

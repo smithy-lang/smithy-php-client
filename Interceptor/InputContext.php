@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Interceptor;
 
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Client\ClientInterface;
 use Smithy\Core\Serde\SerializableStructInterface;
 use Smithy\Core\Shape\OperationInterface;
@@ -30,7 +30,7 @@ final class InputContext
     public function __construct(
         public OperationInterface $operation,
         public SerializableStructInterface $input,
-        public ClientConfig $config,
+        public AbstractClientConfig $config,
         public ?ClientInterface $client = null
     ) {}
 

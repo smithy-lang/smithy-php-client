@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Plugin;
 
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 
 /**
  * Contribute plugins registered through Composer to every client.
@@ -29,7 +29,7 @@ final class AutoPlugin extends AbstractPlugin
     }
 
     /** @inheritDoc */
-    public function configure(ClientConfig $config): ClientConfig
+    public function configure(AbstractClientConfig $config): AbstractClientConfig
     {
         return $config;
     }

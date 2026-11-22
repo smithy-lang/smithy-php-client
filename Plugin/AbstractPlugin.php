@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Plugin;
 
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 
 /**
  * Base class that supplies default plugin composition and ordering.
@@ -17,7 +17,7 @@ use Smithy\Client\ClientConfig;
 abstract class AbstractPlugin implements PluginInterface
 {
     /** @inheritDoc */
-    public function configure(ClientConfig $config): ClientConfig
+    public function configure(AbstractClientConfig $config): AbstractClientConfig
     {
         return $config;
     }

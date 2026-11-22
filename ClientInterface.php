@@ -15,7 +15,7 @@ use Smithy\Core\Shape\OperationInterface;
 /**
  * Define the contract for generated service clients.
  *
- *  - {@see getConfig} exposes the frozen {@see ClientConfig}. Subclasses
+ *  - {@see getConfig} exposes the frozen {@see AbstractClientConfig}. Subclasses
  *    narrow the return type through covariance.
  *  - {@see executeOperation} is the generic entry point. Generated typed
  *    methods (`putObject(PutObjectInput): PutObjectOutput`) delegate to
@@ -26,7 +26,7 @@ interface ClientInterface
     /**
      * Access the frozen configuration.
      */
-    public function getConfig(): ClientConfig;
+    public function getConfig(): AbstractClientConfig;
 
     /**
      * Execute an operation through the client's pipeline.

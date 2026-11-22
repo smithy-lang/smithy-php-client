@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Plugin;
 
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 
 /**
  * An ordered set of plugins and the state produced while resolving it.
@@ -27,7 +27,7 @@ final readonly class ResolvedPlugins
     /**
      * Apply the resolved plugins to an immutable client configuration.
      */
-    public function apply(ClientConfig $config): ClientConfig
+    public function apply(AbstractClientConfig $config): AbstractClientConfig
     {
         $config = $config->withResolvedPluginState($this->state);
         $pending = $this->plugins;

@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Plugin;
 
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 
 /**
  * Store client plugins in registration order.
@@ -98,7 +98,7 @@ final readonly class PluginCollection
     /**
      * Resolve and apply this collection to a client configuration.
      */
-    public function apply(ClientConfig $config): ClientConfig
+    public function apply(AbstractClientConfig $config): AbstractClientConfig
     {
         return (new PluginResolver())
             ->resolve($this, $config->getPluginState())

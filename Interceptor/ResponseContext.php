@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Interceptor;
 
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Core\Transport\{
     TransportRequestInterface,
     TransportResponseInterface
@@ -32,7 +32,7 @@ final class ResponseContext
     public function __construct(
         public OperationInterface $operation,
         public SerializableStructInterface $input,
-        public ClientConfig $config,
+        public AbstractClientConfig $config,
         public TransportRequestInterface $request,
         public TransportResponseInterface $response
     ) {}

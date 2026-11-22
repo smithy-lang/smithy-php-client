@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Interceptor;
 
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Core\Transport\{
     TransportRequestInterface,
     TransportResponseInterface
@@ -56,7 +56,7 @@ abstract class AbstractInterceptor implements InterceptorInterface
     }
 
     /** @inheritDoc */
-    public function modifyBeforeCall(CallContext $ctx): ClientConfig
+    public function modifyBeforeCall(CallContext $ctx): AbstractClientConfig
     {
         return $ctx->config;
     }

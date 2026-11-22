@@ -65,7 +65,7 @@ final class ClientPipeline
     private array $authSchemeByOperation = [];
 
     public function __construct(
-        private readonly ClientConfig $config
+        private readonly AbstractClientConfig $config
     ) {}
 
     /**
@@ -306,7 +306,7 @@ final class ClientPipeline
         OperationInterface $operation,
         SerializableStructInterface $input,
         TransportRequestInterface $request,
-        ClientConfig $config,
+        AbstractClientConfig $config,
         ?RequestOverrideConfig $overrides,
         ?ResolvedAuthScheme &$authScheme,
         ?IdentityResolverInterface &$identityResolver,
@@ -537,7 +537,7 @@ final class ClientPipeline
     private function executeWithoutInterceptors(
         OperationInterface $operation,
         SerializableStructInterface $input,
-        ClientConfig $config,
+        AbstractClientConfig $config,
         ?RequestOverrideConfig $overrides,
         TransportContext $transportContext
     ): SerializableStructInterface
@@ -640,7 +640,7 @@ final class ClientPipeline
      */
     private static function resolveRetryRequestFlags(
         OperationInterface $operation,
-        ClientConfig $config
+        AbstractClientConfig $config
     ): int
     {
         $resolver = $config->context[

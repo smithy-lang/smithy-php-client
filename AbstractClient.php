@@ -30,7 +30,7 @@ use Smithy\Core\Shape\OperationInterface;
 /**
  * Provide shared execution behavior for generated service clients.
  *
- * Holds an immutable {@see ClientConfig} and a {@see ClientPipeline}.
+ * Holds an immutable {@see AbstractClientConfig} and a {@see ClientPipeline}.
  * Generated operation methods call {@see executeOperation()} with a static
  * operation singleton and a typed input shape. Each generated signature
  * narrows the return type to the operation's output shape.
@@ -41,7 +41,7 @@ use Smithy\Core\Shape\OperationInterface;
 abstract class AbstractClient implements ClientInterface
 {
     /** Client configuration after plugin application. */
-    protected readonly ClientConfig $config;
+    protected readonly AbstractClientConfig $config;
 
     /** Constructed once per client and reused across operations. */
     private readonly ClientPipeline $pipeline;
@@ -50,7 +50,7 @@ abstract class AbstractClient implements ClientInterface
      * Resolve and apply client plugins.
      */
     public function __construct(
-        ClientConfig $config,
+        AbstractClientConfig $config,
         PluginCollection $plugins = new PluginCollection()
     )
     {
@@ -65,7 +65,7 @@ abstract class AbstractClient implements ClientInterface
     /**
      * Access the client configuration.
      */
-    public function getConfig(): ClientConfig
+    public function getConfig(): AbstractClientConfig
     {
         return $this->config;
     }

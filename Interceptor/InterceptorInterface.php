@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Interceptor;
 
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Core\Transport\{
     TransportRequestInterface,
     TransportResponseInterface
@@ -50,7 +50,7 @@ interface InterceptorInterface
      * added to the returned configuration participate in call wrapping and
      * execution hooks, but do not receive this hook for the current call.
      */
-    public function modifyBeforeCall(CallContext $ctx): ClientConfig;
+    public function modifyBeforeCall(CallContext $ctx): AbstractClientConfig;
 
     /**
      * Report whether this interceptor wraps calls through

@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Plugin;
 
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Client\Interceptor\RequestCompressionInterceptor;
 
 /**
@@ -38,7 +38,7 @@ final class RequestCompressionPlugin extends AbstractPlugin
      *
      * @throws \InvalidArgumentException If compression settings are invalid.
      */
-    public function configure(ClientConfig $config): ClientConfig
+    public function configure(AbstractClientConfig $config): AbstractClientConfig
     {
         return $config->withInterceptor(
             new RequestCompressionInterceptor(
@@ -56,7 +56,7 @@ final class RequestCompressionPlugin extends AbstractPlugin
     }
 
     private function resolveDisableRequestCompression(
-        ClientConfig $config
+        AbstractClientConfig $config
     ): bool
     {
         if ($this->disabled !== null) {
@@ -85,7 +85,7 @@ final class RequestCompressionPlugin extends AbstractPlugin
     }
 
     private function resolveRequestMinCompressionSizeBytes(
-        ClientConfig $config
+        AbstractClientConfig $config
     ): int
     {
         $value = $this->minCompressionSizeBytes

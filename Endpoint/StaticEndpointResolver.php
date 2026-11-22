@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Endpoint;
 
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Core\Endpoint\Endpoint;
 use Smithy\Core\Serde\SerializableStructInterface;
 use Smithy\Core\Shape\OperationInterface;
@@ -33,7 +33,7 @@ final class StaticEndpointResolver implements EndpointResolverInterface
     public function resolveEndpoint(
         OperationInterface $operation,
         SerializableStructInterface $input,
-        ClientConfig $config
+        AbstractClientConfig $config
     ): Endpoint
     {
         return $this->endpoint;

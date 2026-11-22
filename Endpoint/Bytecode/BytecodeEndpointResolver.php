@@ -10,7 +10,7 @@ declare(strict_types=1);
 namespace Smithy\Client\Endpoint\Bytecode;
 
 use JmesPath\Env;
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Client\Endpoint\EndpointResolverInterface;
 use Smithy\Core\Endpoint\Endpoint;
 use Smithy\Core\Serde\{
@@ -115,7 +115,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
      */
     private array|false $lastOperationContext = false;
 
-    private ?ClientConfig $lastConfig = null;
+    private ?AbstractClientConfig $lastConfig = null;
 
     /** @var array<string, mixed> Endpoint parameters from the last config */
     private array $lastConfigParameters = [];
@@ -203,7 +203,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
     public function resolveEndpoint(
         OperationInterface $operation,
         SerializableStructInterface $input,
-        ClientConfig $config
+        AbstractClientConfig $config
     ): Endpoint
     {
         if ($operation === $this->lastOperation) {
@@ -295,7 +295,7 @@ final class BytecodeEndpointResolver implements EndpointResolverInterface
      * @throws \InvalidArgumentException When the endpoint parameters or trace
      *                                   sink are invalid.
      */
-    private function readConfigContext(ClientConfig $config): void
+    private function readConfigContext(AbstractClientConfig $config): void
     {
         $context = $config->context[
             EndpointResolverInterface::CONTEXT_PARAMETERS

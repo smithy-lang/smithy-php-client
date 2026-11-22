@@ -12,6 +12,7 @@ namespace Smithy\Client\Dynamic;
 use Smithy\Auth\AuthSchemeInterface;
 use Smithy\Client\{
     AbstractClient,
+    AbstractClientConfig,
     ClientConfig,
     RequestOverrideConfig
 };
@@ -67,7 +68,7 @@ class DynamicClient extends AbstractClient
      */
     public function __construct(
         SmithyModel $model,
-        ClientConfig $config,
+        AbstractClientConfig $config,
         ?string $serviceId = null,
         ?string $protocolId = null,
         PluginCollection $plugins = new PluginCollection(),
@@ -216,7 +217,7 @@ class DynamicClient extends AbstractClient
         ?RetryStrategyInterface $retryStrategy,
         string $retryScope,
         array $context
-    ): ClientConfig
+    ): AbstractClientConfig
     {
         if ($transport !== null && $httpClient !== null) {
             throw new \InvalidArgumentException(

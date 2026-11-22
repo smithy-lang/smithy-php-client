@@ -13,7 +13,7 @@ use Smithy\Auth\{
     AuthSchemeOption,
     NoAuthScheme
 };
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Core\Shape\OperationInterface;
 
 /**
@@ -42,7 +42,7 @@ final class StaticAuthSchemeResolver extends AuthSchemeResolver
     /** @return list<AuthSchemeOption> */
     protected function resolveAuthSchemeOptions(
         OperationInterface $operation,
-        ClientConfig $config
+        AbstractClientConfig $config
     ): array
     {
         $options = [];

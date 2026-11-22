@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace Smithy\Client\Retry;
 
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Core\Shape\OperationInterface;
 
 /**
@@ -28,6 +28,6 @@ interface RetryRequestFlagResolverInterface
      */
     public function resolve(
         OperationInterface $operation,
-        ClientConfig $config
+        AbstractClientConfig $config
     ): int;
 }

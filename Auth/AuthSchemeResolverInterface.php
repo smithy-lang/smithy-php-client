@@ -10,7 +10,7 @@ declare(strict_types=1);
 namespace Smithy\Client\Auth;
 
 use Smithy\Auth\ResolvedAuthScheme;
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Core\Endpoint\EndpointAuthScheme;
 use Smithy\Core\Shape\OperationInterface;
 
@@ -32,7 +32,7 @@ interface AuthSchemeResolverInterface
      */
     public function resolveAuthScheme(
         OperationInterface $operation,
-        ClientConfig $config,
+        AbstractClientConfig $config,
         array $preference = []
     ): ResolvedAuthScheme;
 
@@ -47,7 +47,7 @@ interface AuthSchemeResolverInterface
     public function resolveEndpointAuthScheme(
         ResolvedAuthScheme $resolvedAuthScheme,
         OperationInterface $operation,
-        ClientConfig $config,
+        AbstractClientConfig $config,
         array $endpointAuthSchemes,
         array $preference = []
     ): ResolvedAuthScheme;

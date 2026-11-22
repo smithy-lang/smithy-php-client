@@ -27,12 +27,12 @@ $client = new WeatherClient($config);
 Reusable client features should register their interceptors through a plugin:
 
 ```php
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Client\Plugin\AbstractPlugin;
 
 final class CorrelationIdPlugin extends AbstractPlugin
 {
-    public function configure(ClientConfig $config): ClientConfig
+    public function configure(AbstractClientConfig $config): AbstractClientConfig
     {
         return $config->withInterceptor(
             new CorrelationIdInterceptor()
@@ -117,7 +117,7 @@ the next hook.
 This example switches the protocol for the current call:
 
 ```php
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Client\Interceptor\AbstractInterceptor;
 use Smithy\Client\Interceptor\CallContext;
 use Smithy\Protocol\ProtocolInterface;
@@ -128,7 +128,7 @@ final class ProtocolOverrideInterceptor extends AbstractInterceptor
         private readonly ProtocolInterface $protocol
     ) {}
 
-    public function modifyBeforeCall(CallContext $ctx): ClientConfig
+    public function modifyBeforeCall(CallContext $ctx): AbstractClientConfig
     {
         return $ctx->config->withProtocol($this->protocol);
     }
@@ -248,7 +248,7 @@ attempt.
 | `ResponseContext` | Operation, input, configuration, request, and response |
 | `OutputContext` | Operation, input, configuration, nullable request, nullable response, and nullable output |
 
-Call-configuration hooks return a `ClientConfig`. Call wrappers use
+Call-configuration hooks return an `AbstractClientConfig`. Call wrappers use
 `withInput()` to continue with a replacement input. Other modify hooks return
 their replacement value. The chain passes each returned value to later
 interceptors.

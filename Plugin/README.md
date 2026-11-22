@@ -1,18 +1,18 @@
 # Smithy PHP Client Plugins
 
-Plugins package reusable changes to an immutable `ClientConfig`. They can
+Plugins package reusable changes to an immutable `AbstractClientConfig`. They can
 replace client dependencies, register interceptors, contribute child plugins,
 and declare when they run relative to other plugins.
 
 Extend `AbstractPlugin` and override `configure()`:
 
 ```php
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Client\Plugin\AbstractPlugin;
 
 final class UserAgentPlugin extends AbstractPlugin
 {
-    public function configure(ClientConfig $config): ClientConfig
+    public function configure(AbstractClientConfig $config): AbstractClientConfig
     {
         return $config->withInterceptor(
             new UserAgentInterceptor()
@@ -58,7 +58,7 @@ Packages can apply a plugin automatically by implementing
 Automatic plugins must have a public constructor with no required arguments:
 
 ```php
-use Smithy\Client\ClientConfig;
+use Smithy\Client\AbstractClientConfig;
 use Smithy\Client\Plugin\{
     AbstractPlugin,
     AutoPluginInterface
@@ -67,7 +67,7 @@ use Smithy\Client\Plugin\{
 final class TracingPlugin extends AbstractPlugin implements
     AutoPluginInterface
 {
-    public function configure(ClientConfig $config): ClientConfig
+    public function configure(AbstractClientConfig $config): AbstractClientConfig
     {
         return $config->withInterceptor(
             new TracingInterceptor()
@@ -217,7 +217,7 @@ Implement `PluginInterface` directly only when explicit implementations of
 all three methods are useful:
 
 ```php
-public function configure(ClientConfig $config): ClientConfig;
+public function configure(AbstractClientConfig $config): AbstractClientConfig;
 
 public function getChildPlugins(): array;
 

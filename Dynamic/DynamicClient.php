@@ -113,7 +113,7 @@ class DynamicClient extends AbstractClient
      * @return list<string>
      */
     private function resolveAuthSchemeIds(
-        ClientConfig $constructorConfig,
+        AbstractClientConfig $constructorConfig,
         array $authSchemeIds
     ): array
     {

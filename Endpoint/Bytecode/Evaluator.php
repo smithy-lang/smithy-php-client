@@ -1044,8 +1044,14 @@ final readonly class Evaluator
         if (isset($parts['port'])) {
             $authority .= ':' . $parts['port'];
         }
-        $path = $parts['path'] ?? '/';
-        $normalized = \str_ends_with($path, '/') ? $path : $path . '/';
+        // `path` is the unmodified path, so a URL without one yields ''.
+        // Rulesets append `{url#path}` to a host, and a bare custom
+        // endpoint must not gain a trailing slash. `normalizedPath` always
+        // starts and ends with '/'.
+        $path = $parts['path'] ?? '';
+        $normalized = $path === ''
+            ? '/'
+            : (\str_ends_with($path, '/') ? $path : $path . '/');
         return [
             'scheme' => $scheme,
             'authority' => $authority,

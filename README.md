@@ -144,7 +144,7 @@ This package builds on `smithy/async`, `smithy/auth`, `smithy/core`,
 
 ## Design
 
-See [Client Runtime Design](../../docs/design/client/client-runtime-design.md).
+See [Client Runtime Design](https://github.com/smithy-lang/smithy-php/blob/main/docs/design/client/client-runtime-design.md).
 
 ## Contributing
 

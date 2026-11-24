@@ -229,4 +229,4 @@ be immutable or otherwise safe for concurrent use.
 
 ## Design
 
-See [Plugin Design](../../../docs/design/client/plugin/client-plugin-design.md).
+See [Plugin Design](https://github.com/smithy-lang/smithy-php/blob/main/docs/design/client/plugin/client-plugin-design.md).

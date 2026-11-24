@@ -284,7 +284,7 @@ Test an interceptor through `InterceptorChain` when verifying ordering or
 value propagation. Test call wrappers through a client when verifying
 short-circuiting, input replacement, retries, or transport behavior.
 
-See [Interceptor Design](../../../docs/design/client/interceptor/client-interceptor-design.md)
+See [Interceptor Design](https://github.com/smithy-lang/smithy-php/blob/main/docs/design/client/interceptor/client-interceptor-design.md)
 for lifecycle and error-propagation invariants.
 
 Run the interceptor tests from the package root:

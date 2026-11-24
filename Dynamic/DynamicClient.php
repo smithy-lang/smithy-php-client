@@ -200,8 +200,6 @@ class DynamicClient extends AbstractClient
      * @param array<string, mixed> $context
      * @param string|null $endpoint Endpoint URL the config wraps in a
      *        static resolver. Set this or `$endpointResolver`.
-     *
-     * @internal Called by {@see DynamicClientFactory}.
      */
     public static function createClientConfig(
         SmithyModel $model,

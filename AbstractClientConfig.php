@@ -328,9 +328,7 @@ abstract class AbstractClientConfig
     }
 
     /**
-     * Return internal plugin application state.
-     *
-     * @internal
+     * Return the plugin application state.
      */
     public function getPluginState(): PluginState
     {
@@ -705,8 +703,6 @@ abstract class AbstractClientConfig
      * Subclasses pass the result to their constructor as
      * `explicitFields` so defaulted values stay defaulted in the copy.
      *
-     * @internal Used by configuration subclasses when copying base state.
-     *
      * @param array<string, mixed> $overrides
      *
      * @return array<string, bool>
@@ -728,8 +724,6 @@ abstract class AbstractClientConfig
 
     /**
      * Whether the current protocol was supplied explicitly.
-     *
-     * @internal Used by configuration subclasses when copying base state.
      */
     protected function hasExplicitProtocol(): bool
     {

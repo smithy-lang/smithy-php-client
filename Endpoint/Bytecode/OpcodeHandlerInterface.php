@@ -21,8 +21,8 @@ namespace Smithy\Client\Endpoint\Bytecode;
  * operand bytes, push or pop stack values, and update the stack pointer
  * without allocating a result tuple on each dispatch.
  *
- * @internal Implementations should only throw
- * {@see RulesEvaluationException} for bytecode evaluation failures.
+ * Implementations throw {@see RulesEvaluationException} for bytecode
+ * evaluation failures.
  */
 interface OpcodeHandlerInterface
 {

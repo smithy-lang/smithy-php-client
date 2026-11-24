@@ -34,9 +34,8 @@ use Smithy\Core\Shape\Utils\ArrayShapeSerializer;
  * static context, auth mappings, key builders, and opcode handlers so
  * incompatible configurations remain isolated.
  *
- * @internal Caching is an implementation detail. External code should
- * depend on {@see EndpointResolverInterface}; the cache representation,
- * eviction policy, and default size may change without notice.
+ * Code that only resolves endpoints can depend on
+ * {@see EndpointResolverInterface}.
  */
 final class BytecodeEndpointResolver implements EndpointResolverInterface
 {

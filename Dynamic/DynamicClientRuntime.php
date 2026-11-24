@@ -17,8 +17,6 @@ use Smithy\Protocol\ProtocolInterface;
 
 /**
  * Runtime implementations available to dynamic clients.
- *
- * @internal Used by dynamic client implementations and provider subclasses.
  */
 final class DynamicClientRuntime
 {

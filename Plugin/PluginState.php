@@ -11,8 +11,6 @@ namespace Smithy\Client\Plugin;
 
 /**
  * Immutable plugin registration and application state.
- *
- * @internal
  */
 final readonly class PluginState
 {

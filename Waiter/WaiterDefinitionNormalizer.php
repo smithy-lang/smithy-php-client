@@ -45,8 +45,8 @@ final class WaiterDefinitionNormalizer
     /**
      * Index waiter names and enforce service-wide uniqueness.
      *
-     * @param array<string, array<string, array<string, mixed>>>
-     *        $waitersByOperation Operation shape ID to waiter definitions.
+     * @param array<string, array<string, array<string, mixed>>> $waitersByOperation
+     *        Operation shape ID to waiter definitions.
      *
      * @return array<string, string> Normalized waiter name to operation ID.
      */

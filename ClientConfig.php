@@ -13,6 +13,10 @@ namespace Smithy\Client;
  * Immutable configuration for a {@see ClientInterface}.
  *
  * General-purpose {@see AbstractClientConfig} that copies the base fields.
+ * {@see copyWith()} builds copies with `new static`, so subclasses must keep
+ * the inherited constructor signature.
+ *
+ * @phpstan-consistent-constructor
  */
 class ClientConfig extends AbstractClientConfig
 {

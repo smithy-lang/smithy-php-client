@@ -132,7 +132,7 @@ final class DynamicService implements ServiceInterface
     /**
      * Resolve and cache an operation by modeled name.
      */
-    public function getOperation(string $name): ?OperationInterface
+    public function getOperation(string $name): ?DynamicOperation
     {
         if (isset($this->operationsByName[$name])) {
             return $this->operationsByName[$name];

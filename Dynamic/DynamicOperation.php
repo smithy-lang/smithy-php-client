@@ -236,6 +236,8 @@ final class DynamicOperation implements OperationInterface
 
     /**
      * Coerce runtime input into a schema-backed structure.
+     *
+     * @param array<string, mixed>|DocumentInterface|null $value
      */
     public function createInputFromValue(
         array|DocumentInterface|null $value = null

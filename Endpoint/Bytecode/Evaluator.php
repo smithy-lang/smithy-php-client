@@ -336,6 +336,9 @@ final readonly class Evaluator
         };
     }
 
+    /**
+     * @param array<mixed> $value
+     */
     private function isStringList(array $value): bool
     {
         foreach ($value as $item) {

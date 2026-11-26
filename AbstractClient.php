@@ -137,13 +137,21 @@ abstract class AbstractClient implements ClientInterface
 
     /**
      * Create a paginator bound to this client.
+     *
+     * @template TOutput of SerializableStructInterface
+     *
+     * @param class-string<TOutput> $outputClass Output class of `$operation`.
+     *        Every page must be an instance of it.
+     *
+     * @return Paginator<TOutput>
      */
     protected function createPaginator(
         OperationInterface $operation,
-        SerializableStructInterface $input
+        SerializableStructInterface $input,
+        string $outputClass = SerializableStructInterface::class
     ): Paginator
     {
-        return new Paginator($this, $operation, $input);
+        return new Paginator($this, $operation, $input, $outputClass);
     }
 
     /**

@@ -46,6 +46,8 @@ final class OutputContext
 {
     /**
      * Create output hook context.
+     *
+     * @param IdentityResolverInterface<IdentityInterface>|null $identityResolver
      */
     public function __construct(
         public OperationInterface $operation,

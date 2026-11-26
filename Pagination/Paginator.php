@@ -37,13 +37,18 @@ final class Paginator implements \IteratorAggregate
     /**
      * Bind an operation and its original input to a client.
      *
+     * @param class-string<TOutput> $outputClass Output class of `$operation`.
+     *        Every page must be an instance of it.
+     *
      * @throws \LogicException If pagination metadata is incomplete or
      *                         references an invalid output path.
      */
     public function __construct(
         private readonly ClientInterface $client,
         private readonly OperationInterface $operation,
-        SerializableStructInterface $input
+        SerializableStructInterface $input,
+        private readonly string $outputClass =
+            SerializableStructInterface::class
     ) {
         $pagination = $operation->getSchema()->getExtension(
             PaginationSchemaExtensionProvider::key()
@@ -82,6 +87,7 @@ final class Paginator implements \IteratorAggregate
      * @throws \InvalidArgumentException If `$maxItems` is not positive.
      * @throws \LogicException If the operation does not model item and
      *                         page-size members.
+     * @return self<TOutput>
      */
     public function withMaxItems(int $maxItems): self
     {
@@ -113,6 +119,8 @@ final class Paginator implements \IteratorAggregate
 
     /**
      * Create a copy that applies request overrides to every page request.
+     *
+     * @return self<TOutput>
      */
     public function withRequestOverrides(
         RequestOverrideConfig $overrides
@@ -131,6 +139,8 @@ final class Paginator implements \IteratorAggregate
      * When true, iteration ends after a page whose token equals the token
      * sent with its request. When false, iteration continues until the
      * token is empty or the max items limit is reached. Defaults to true.
+     *
+     * @return self<TOutput>
      */
     public function withStopOnSameToken(bool $stop): self
     {
@@ -165,12 +175,18 @@ final class Paginator implements \IteratorAggregate
                 );
             }
 
-            /** @var TOutput $output */
             $output = $this->client->executeOperation(
                 $this->operation,
                 $requestInput->getInput(),
                 $this->requestOverrides
             );
+            if (!$output instanceof $this->outputClass) {
+                throw new \UnexpectedValueException(
+                    "Operation {$this->operation->getId()} returned "
+                        . $output::class
+                        . " instead of {$this->outputClass}."
+                );
+            }
 
             yield $output;
 
@@ -231,6 +247,8 @@ final class Paginator implements \IteratorAggregate
 
     /**
      * Extract the token from a response using the precomputed schema path.
+     *
+     * @return string|array<mixed>|null
      */
     private function extractToken(
         SerializableStructInterface $output
@@ -291,6 +309,9 @@ final class Paginator implements \IteratorAggregate
         return $value;
     }
 
+    /**
+     * @param string|array<mixed>|null $token
+     */
     private static function isEmptyToken(
         string|array|null $token
     ): bool
@@ -300,6 +321,10 @@ final class Paginator implements \IteratorAggregate
             || $token === [];
     }
 
+    /**
+     * @param string|array<mixed>|null $left
+     * @param string|array<mixed>|null $right
+     */
     private static function tokensEqual(
         string|array|null $left,
         string|array|null $right

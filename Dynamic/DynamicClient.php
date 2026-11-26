@@ -313,7 +313,8 @@ class DynamicClient extends AbstractClient
             : RequestOverrideConfig::fromArray($overrides);
         $paginator = $this->createPaginator(
             $operation,
-            $operation->createInputFromValue($input)
+            $operation->createInputFromValue($input),
+            StructDocument::class
         );
 
         return $requestOverrides === null
@@ -365,6 +366,7 @@ class DynamicClient extends AbstractClient
      * convention.
      *
      * @param array<int|string, mixed> $arguments
+     * @return StructDocument|Paginator<StructDocument>|WaiterResult
      */
     public function __call(
         string $name,

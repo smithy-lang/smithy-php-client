@@ -585,6 +585,7 @@ abstract class AbstractClientConfig
      * already registered for the same identity type.
      *
      * @param class-string<\Smithy\Auth\IdentityInterface> $identityClass
+     * @param IdentityResolverInterface<\Smithy\Auth\IdentityInterface> $resolver
      */
     public function withIdentityResolver(
         string $identityClass,

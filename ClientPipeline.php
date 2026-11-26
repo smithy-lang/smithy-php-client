@@ -303,7 +303,8 @@ final class ClientPipeline
      * reference parameters.
      *
      * @param-out ResolvedAuthScheme $authScheme
-     * @param-out IdentityResolverInterface $identityResolver
+     * @param IdentityResolverInterface<IdentityInterface>|null $identityResolver
+     * @param-out IdentityResolverInterface<IdentityInterface> $identityResolver
      * @param-out IdentityInterface $identity
      */
     private function prepareAttemptRequest(

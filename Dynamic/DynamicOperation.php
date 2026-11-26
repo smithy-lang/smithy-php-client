@@ -141,7 +141,7 @@ final class DynamicOperation implements OperationInterface
     /**
      * Return the service shape ID.
      */
-    public function getServiceId(): ?string
+    public function getServiceId(): string
     {
         return $this->model->getOriginalShapeId($this->serviceId);
     }

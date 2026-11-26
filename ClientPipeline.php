@@ -301,6 +301,10 @@ final class ClientPipeline
      * Return the request with the endpoint applied. Write the signing auth
      * scheme, its identity resolver, and the resolved identity to the
      * reference parameters.
+     *
+     * @param-out ResolvedAuthScheme $authScheme
+     * @param-out IdentityResolverInterface $identityResolver
+     * @param-out IdentityInterface $identity
      */
     private function prepareAttemptRequest(
         OperationInterface $operation,
@@ -331,18 +335,18 @@ final class ClientPipeline
                 ->resolveAuthScheme($operation, $config, $preference);
         }
 
-        $identityResolver = $resolvedAuthScheme->identityResolver
+        $resolver = $resolvedAuthScheme->identityResolver
             ?? $resolvedAuthScheme
                 ->scheme
                 ->getIdentityResolver($config->getIdentityResolvers());
-        if ($identityResolver === null) {
+        if ($resolver === null) {
             throw new IdentityNotFoundException(
                 'Auth scheme '
                 . $resolvedAuthScheme->scheme->getSchemeId()
                 . ' has no usable identity resolver.'
             );
         }
-        $identity = $identityResolver
+        $resolvedIdentity = $resolver
             ->resolveIdentity($resolvedAuthScheme->identityProperties)
             ->unwrap();
         $endpoint = $config->endpointResolver->resolveEndpoint(
@@ -350,7 +354,7 @@ final class ClientPipeline
             $input,
             $config
         );
-        $authScheme = $config
+        $signingScheme = $config
             ->authSchemeResolver
             ->resolveEndpointAuthScheme(
                 $resolvedAuthScheme,
@@ -359,22 +363,20 @@ final class ClientPipeline
                 $endpoint->authSchemes,
                 $preference
             );
-        if ($authScheme->scheme !== $resolvedAuthScheme->scheme) {
-            // A failure below must not leave the modeled identity in place.
-            $identity = null;
-            $identityResolver = $authScheme->identityResolver
-                ?? $authScheme
+        if ($signingScheme->scheme !== $resolvedAuthScheme->scheme) {
+            $resolver = $signingScheme->identityResolver
+                ?? $signingScheme
                     ->scheme
                     ->getIdentityResolver($config->getIdentityResolvers());
-            if ($identityResolver === null) {
+            if ($resolver === null) {
                 throw new IdentityNotFoundException(
                     'Auth scheme '
-                    . $authScheme->scheme->getSchemeId()
+                    . $signingScheme->scheme->getSchemeId()
                     . ' has no usable identity resolver.'
                 );
             }
-            $identity = $identityResolver
-                ->resolveIdentity($authScheme->identityProperties)
+            $resolvedIdentity = $resolver
+                ->resolveIdentity($signingScheme->identityProperties)
                 ->unwrap();
         }
 
@@ -382,6 +384,12 @@ final class ClientPipeline
             $request,
             $endpoint
         );
+
+        // Publish the auth state only once every step has succeeded, so a
+        // failed attempt never carries a partly resolved identity.
+        $authScheme = $signingScheme;
+        $identityResolver = $resolver;
+        $identity = $resolvedIdentity;
 
         return $overrides?->applyToRequest($request) ?? $request;
     }
@@ -392,6 +400,8 @@ final class ClientPipeline
      * Write the attempt's output context to `$outCtx`. On success it contains
      * the deserialized output. On failure it describes how far the attempt
      * got.
+     *
+     * @param-out OutputContext $outCtx
      */
     private function executeAttempt(
         InterceptorInterface $interceptor,
@@ -401,7 +411,7 @@ final class ClientPipeline
         ?OutputContext &$outCtx
     ): ?\Throwable
     {
-        $outCtx = null;
+        $attemptCtx = null;
         $response = null;
         $output = null;
         $error = null;
@@ -413,7 +423,7 @@ final class ClientPipeline
         try {
             $interceptor->readBeforeAttempt($reqCtx);
         } catch (\Throwable $e) {
-            $outCtx = new OutputContext(
+            $attemptCtx = new OutputContext(
                 $reqCtx->operation,
                 $reqCtx->input,
                 $reqCtx->config,
@@ -422,6 +432,7 @@ final class ClientPipeline
                 null
             );
 
+            $outCtx = $attemptCtx;
             return $e;
         }
 
@@ -493,7 +504,7 @@ final class ClientPipeline
                 $deserError = $e;
             }
 
-            $outCtx = new OutputContext(
+            $attemptCtx = new OutputContext(
                 $reqCtx->operation,
                 $reqCtx->input,
                 $reqCtx->config,
@@ -506,7 +517,7 @@ final class ClientPipeline
 
             // This hook runs even when deserialization fails.
             try {
-                $interceptor->readAfterDeserialization($outCtx, $deserError);
+                $interceptor->readAfterDeserialization($attemptCtx, $deserError);
             } catch (\Throwable $e) {
                 $deserError = $e;
             }
@@ -514,13 +525,13 @@ final class ClientPipeline
             if ($deserError !== null) {
                 $error = $deserError;
                 $output = null;
-                $outCtx->replaceOutput(null);
+                $attemptCtx->replaceOutput(null);
             }
         } catch (\Throwable $e) {
             $error = $e;
         }
 
-        $outCtx ??= new OutputContext(
+        $attemptCtx ??= new OutputContext(
             $reqCtx->operation,
             $reqCtx->input,
             $reqCtx->config,
@@ -531,6 +542,7 @@ final class ClientPipeline
             $identityResolver
         );
 
+        $outCtx = $attemptCtx;
         return $error;
     }
 

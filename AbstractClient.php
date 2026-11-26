@@ -195,8 +195,8 @@ abstract class AbstractClient implements ClientInterface
                 $config?->requestOverrides
             ),
             $definition->acceptors,
-            $config?->minDelay ?? $definition->minDelay,
-            $config?->maxDelay ?? $definition->maxDelay
+            $config->minDelay ?? $definition->minDelay,
+            $config->maxDelay ?? $definition->maxDelay
         );
     }
 }

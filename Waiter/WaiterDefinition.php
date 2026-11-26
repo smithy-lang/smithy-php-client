@@ -70,6 +70,9 @@ final readonly class WaiterDefinition
         );
     }
 
+    /**
+     * @return Acceptor::SUCCESS|Acceptor::FAILURE|Acceptor::RETRY
+     */
     private static function state(string $state): int
     {
         return match ($state) {

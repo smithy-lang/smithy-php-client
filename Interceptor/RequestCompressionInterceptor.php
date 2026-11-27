@@ -87,7 +87,7 @@ final class RequestCompressionInterceptor extends AbstractInterceptor
         $transportRequest = HttpTransportRequest::expect($ctx->request);
         $request = $transportRequest->request;
         $body = $request->getBody();
-        $encodingValues = $request->getHeader('Content-Encoding');
+        $encodingValues = \array_values($request->getHeader('Content-Encoding'));
         $encodingValues[] = $algorithm;
 
         if ($ctx->operation->getInputStreamMember() !== null) {

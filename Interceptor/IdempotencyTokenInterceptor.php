@@ -107,16 +107,10 @@ final class IdempotencyTokenInterceptor extends AbstractInterceptor
         $bytes = \random_bytes(16);
         $bytes[6] = \chr((\ord($bytes[6]) & 0x0f) | 0x40);
         $bytes[8] = \chr((\ord($bytes[8]) & 0x3f) | 0x80);
-        $parts = \unpack('Na/nb/nc/nd/ne/Nf', $bytes);
-
-        return \sprintf(
-            '%08x-%04x-%04x-%04x-%04x%08x',
-            $parts['a'],
-            $parts['b'],
-            $parts['c'],
-            $parts['d'],
-            $parts['e'],
-            $parts['f']
+        // Eight 4-hex-digit groups, joined as 8-4-4-4-12.
+        return \vsprintf(
+            '%s%s-%s-%s-%s-%s%s%s',
+            \str_split(\bin2hex($bytes), 4)
         );
     }
 }

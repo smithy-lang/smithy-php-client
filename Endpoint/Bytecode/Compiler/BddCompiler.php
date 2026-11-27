@@ -1067,7 +1067,7 @@ final class BddCompiler
      * `bar`, index `3`, and property `baz`. Negative indexes are retained
      * for lowering to the dedicated negative-index opcodes.
      *
-     * @return list<array{0:string,1:string|int}>
+     * @return list<array{0:'prop', 1:string}|array{0:'idx', 1:int}>
      */
     private static function parsePropertyPath(string $path): array
     {

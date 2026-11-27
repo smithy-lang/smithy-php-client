@@ -106,8 +106,8 @@ final readonly class Bytecode
     )
     {
         $defaults = [];
-        foreach ($registers as $i => $def) {
-            $defaults[$i] = $def['default'];
+        foreach ($registers as $def) {
+            $defaults[] = $def['default'];
         }
         $this->defaultRegisters = $defaults;
     }

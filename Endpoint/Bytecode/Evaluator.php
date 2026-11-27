@@ -516,16 +516,17 @@ final readonly class Evaluator
                     break;
 
                 case 19: // FN0
-                    $stack[$sp++] = $functions[$code[$pc++]]->apply0();
+                    $fn = $functions[$code[$pc++]] ?? throw self::unknownFunction($code, $pc);
+                    $stack[$sp++] = $fn->apply0();
                     break;
 
                 case 20: // FN1
-                    $fn = $functions[$code[$pc++]];
+                    $fn = $functions[$code[$pc++]] ?? throw self::unknownFunction($code, $pc);
                     $stack[$sp - 1] = $fn->apply1($stack[$sp - 1]);
                     break;
 
                 case 21: // FN2
-                    $fn = $functions[$code[$pc++]];
+                    $fn = $functions[$code[$pc++]] ?? throw self::unknownFunction($code, $pc);
                     $stack[$sp - 2] = $fn->apply2(
                         $stack[$sp - 2],
                         $stack[$sp - 1]
@@ -534,7 +535,7 @@ final readonly class Evaluator
                     break;
 
                 case 22: // FN3
-                    $fn = $functions[$code[$pc++]];
+                    $fn = $functions[$code[$pc++]] ?? throw self::unknownFunction($code, $pc);
                     $stack[$sp - 3] = $fn->apply3(
                         $stack[$sp - 3],
                         $stack[$sp - 2],
@@ -544,13 +545,13 @@ final readonly class Evaluator
                     break;
 
                 case 23: // FN
-                    $fn = $functions[$code[$pc++]];
+                    $fn = $functions[$code[$pc++]] ?? throw self::unknownFunction($code, $pc);
                     $n = $code[$pc++];
                     $b = $sp - $n;
                     $args = [];
                     $src = $b;
                     for ($i = 0; $i < $n; $i++, $src++) {
-                        $args[$i] = $stack[$src];
+                        $args[] = $stack[$src];
                     }
                     $stack[$b] = $fn->apply($args);
                     $sp = $b + 1;
@@ -877,6 +878,22 @@ final readonly class Evaluator
 
         throw new RulesEvaluationException(
             'Bytecode program ran off the end without returning'
+        );
+    }
+
+    /**
+     * Build the error for a function opcode whose operand names no function.
+     *
+     * @param list<int> $code Program being executed.
+     * @param int $pc Program counter just after the function operand.
+     */
+    private static function unknownFunction(
+        array $code,
+        int $pc
+    ): RulesEvaluationException
+    {
+        return new RulesEvaluationException(
+            "Unknown function {$code[$pc - 1]} at pc " . ($pc - 2)
         );
     }
 

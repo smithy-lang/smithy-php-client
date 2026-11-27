@@ -34,7 +34,7 @@ interface OpcodeHandlerInterface
      *                        begin at `$code[$pc]`.
      * @param int $pc Program counter positioned after `$op`. Advance it
      *                for every operand byte consumed.
-     * @param list<mixed> $stack Interpreter stack.
+     * @param array<int, mixed> $stack Interpreter stack, indexed by slot.
      * @param int $sp Index of the next free stack slot. Update it for
      *                every push or pop.
      * @param array<int, mixed> $regs Register file.

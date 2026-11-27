@@ -70,7 +70,8 @@ final class InterceptorChain implements InterceptorInterface
     /** @param InterceptorInterface ...$interceptors Interceptors in execution order. */
     public function __construct(InterceptorInterface ...$interceptors)
     {
-        $this->interceptors = $interceptors;
+        // Named arguments give the variadic string keys.
+        $this->interceptors = \array_values($interceptors);
         $callInterceptors = [];
         $byHook = \array_fill_keys(self::HOOKS, []);
         foreach ($interceptors as $interceptor) {

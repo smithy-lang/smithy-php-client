@@ -331,7 +331,7 @@ final class StdFunctions
             }
 
             /**
-             * @return list<array{0:string, 1:string|int}>|null
+             * @return list<array{0:'prop', 1:string}|array{0:'idx', 1:int}>|null
              */
             private function parsePropertyPath(string $path): ?array
             {

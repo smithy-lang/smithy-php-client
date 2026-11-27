@@ -434,7 +434,11 @@ final class DocumentFactory
             null
         );
         foreach ($target->getMembersByIndex() as $index => $member) {
-            $name = $member->memberName;
+            // Schema rejects members without a name, so this always holds.
+            $name = $member->memberName
+                ?? throw new \LogicException(
+                    "Member schema {$member->id} has no member name."
+                );
             if (\array_key_exists($name, $value)) {
                 $memberValue = $value[$name];
                 if ($memberValue === null

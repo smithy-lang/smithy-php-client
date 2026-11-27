@@ -184,7 +184,7 @@ abstract class AbstractInterceptor implements InterceptorInterface
             throw $error;
         }
 
-        return $ctx->output;
+        return $ctx->getOutput();
     }
 
     /** @inheritDoc */
@@ -205,7 +205,7 @@ abstract class AbstractInterceptor implements InterceptorInterface
             throw $error;
         }
 
-        return $ctx->output;
+        return $ctx->getOutput();
     }
 
     /** @inheritDoc */

@@ -123,7 +123,9 @@ final class DynamicService implements ServiceInterface
     {
         $operations = [];
         foreach (\array_keys($this->operationIdsByName) as $name) {
-            $operations[] = $this->getOperation($name);
+            // Each name comes from the operation table, so it resolves.
+            $operations[] = $this->getOperation($name)
+                ?? throw new \LogicException("Unknown operation {$name}.");
         }
 
         return $operations;

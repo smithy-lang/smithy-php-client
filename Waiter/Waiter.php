@@ -132,7 +132,11 @@ final readonly class Waiter
                     return WaiterResult::fromOutput($attempt->output);
                 }
 
-                return WaiterResult::fromError($attempt->error);
+                return WaiterResult::fromError(
+                    $attempt->error ?? throw new \LogicException(
+                        'Waiter attempt has neither an output nor an error.'
+                    )
+                );
             }
 
             if ($acceptor?->state === Acceptor::FAILURE) {

@@ -61,6 +61,18 @@ final class OutputContext
     ) {}
 
     /**
+     * Return the output. The pipeline leaves it unset only when the attempt
+     * carries an error, so check the error first.
+     *
+     * @throws \LogicException When the output is unset.
+     */
+    public function getOutput(): SerializableStructInterface
+    {
+        return $this->output
+            ?? throw new \LogicException('Output is not set.');
+    }
+
+    /**
      * Replace the mutable output value in this context.
      *
      * @return void

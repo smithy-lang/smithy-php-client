@@ -410,7 +410,7 @@ final class InterceptorChain implements InterceptorInterface
             throw $error;
         }
 
-        return $output;
+        return $ctx->withOutput($output)->getOutput();
     }
 
     /** @inheritDoc */
@@ -458,7 +458,7 @@ final class InterceptorChain implements InterceptorInterface
             throw $error;
         }
 
-        return $output;
+        return $ctx->withOutput($output)->getOutput();
     }
 
     /** @inheritDoc */
